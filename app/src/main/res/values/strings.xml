@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">Arlo Reading App</string>
+    <string name="desc_take_photo">Take Photo</string>
+    <string name="desc_add_page">Add Page</string>
+    <string name="desc_book_icon">Book Icon</string>
 </resources>
