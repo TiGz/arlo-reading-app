@@ -1,5 +1,7 @@
 package com.example.arlo
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
@@ -7,6 +9,10 @@ import android.text.style.BackgroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.SeekBar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -34,6 +40,21 @@ class UnifiedReaderFragment : Fragment() {
 
     private lateinit var viewModel: UnifiedReaderViewModel
     private var bookId: Long = -1L
+
+    // Permission launcher for RECORD_AUDIO
+    private val requestAudioPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.toggleCollaborativeMode()
+        } else {
+            Toast.makeText(
+                requireContext(),
+                "Microphone permission is required for collaborative reading",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,8 +101,16 @@ class UnifiedReaderFragment : Fragment() {
             viewModel.toggleAutoAdvance()
         }
 
+        binding.btnCollaborative.setOnClickListener {
+            toggleCollaborativeMode()
+        }
+
         binding.btnVoice.setOnClickListener {
             showVoicePicker()
+        }
+
+        binding.btnSpeed.setOnClickListener {
+            showSpeedPicker()
         }
 
         binding.btnAddPage.setOnClickListener {
@@ -242,6 +271,9 @@ class UnifiedReaderFragment : Fragment() {
                 binding.btnPrevSentence.visibility = View.VISIBLE
                 binding.btnNextSentence.visibility = View.VISIBLE
 
+                // Show collaborative button in sentence mode
+                binding.btnCollaborative.visibility = View.VISIBLE
+
                 // Sentence display
                 val sentence = state.currentSentence
                 if (sentence != null) {
@@ -251,12 +283,34 @@ class UnifiedReaderFragment : Fragment() {
                         sentence.text
                     }
 
-                    // Apply word highlighting if available
-                    val highlightRange = state.highlightRange
-                    if (highlightRange != null && state.isPlaying) {
-                        val (start, end) = highlightRange
+                    // Apply highlighting based on mode
+                    val spannable = SpannableString(displayText)
+
+                    if (state.collaborativeMode && state.targetWord != null) {
+                        // Collaborative mode: highlight last word in purple
+                        val lastSpaceIndex = displayText.trim().lastIndexOf(' ')
+                        val lastWordStart = if (lastSpaceIndex == -1) 0 else lastSpaceIndex + 1
+                        val lastWordEnd = displayText.trim().length
+
+                        if (lastWordStart < lastWordEnd) {
+                            // Determine highlight color based on feedback state
+                            val highlightColor = when {
+                                state.lastAttemptSuccess == true -> R.color.success
+                                state.lastAttemptSuccess == false -> R.color.error
+                                else -> R.color.highlight_collaborative
+                            }
+                            spannable.setSpan(
+                                BackgroundColorSpan(ContextCompat.getColor(requireContext(), highlightColor)),
+                                lastWordStart,
+                                lastWordEnd,
+                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                        }
+                        binding.tvSentence.text = spannable
+                    } else if (state.highlightRange != null && state.isPlaying) {
+                        // Normal TTS word highlighting
+                        val (start, end) = state.highlightRange
                         if (start >= 0 && end <= displayText.length && start < end) {
-                            val spannable = SpannableString(displayText)
                             spannable.setSpan(
                                 BackgroundColorSpan(ContextCompat.getColor(requireContext(), R.color.highlight_word)),
                                 start,
@@ -283,6 +337,9 @@ class UnifiedReaderFragment : Fragment() {
                     binding.tvSentence.setTextColor(ContextCompat.getColor(requireContext(), R.color.reader_text_secondary))
                 }
 
+                // Collaborative mode indicator
+                updateCollaborativeIndicator(state)
+
                 // Sentence indicator
                 if (state.sentences.isNotEmpty()) {
                     binding.tvSentenceIndicator.text = "Sentence ${state.sentenceNumber} of ${state.totalSentences}"
@@ -300,6 +357,11 @@ class UnifiedReaderFragment : Fragment() {
                 binding.btnPrevSentence.alpha = if (canGoPrev) 1f else 0.3f
                 binding.btnNextSentence.alpha = if (canGoNext) 1f else 0.3f
             }
+        }
+
+        // Hide collaborative button in full page mode
+        if (state.readerMode == UnifiedReaderViewModel.ReaderState.ReaderMode.FULL_PAGE) {
+            binding.btnCollaborative.visibility = View.GONE
         }
 
         // Need more pages banner
@@ -323,6 +385,62 @@ class UnifiedReaderFragment : Fragment() {
         binding.btnNextPage.visibility = if (showNav && state.currentPageIndex < state.pages.size - 1) View.VISIBLE else View.GONE
     }
 
+    private fun updateCollaborativeIndicator(state: UnifiedReaderViewModel.ReaderState) {
+        if (!state.collaborativeMode) {
+            binding.collaborativeIndicator.visibility = View.GONE
+            // Update button appearance
+            binding.btnCollaborative.tooltipText = "Collaborative reading: OFF"
+            binding.btnCollaborative.alpha = 0.6f
+            return
+        }
+
+        // Update button appearance when active
+        binding.btnCollaborative.tooltipText = "Collaborative reading: ON"
+        binding.btnCollaborative.alpha = 1.0f
+
+        // Show indicator based on collaborative state
+        when (state.collaborativeState) {
+            UnifiedReaderViewModel.CollaborativeState.IDLE -> {
+                if (state.targetWord != null) {
+                    // Waiting for user to speak
+                    binding.collaborativeIndicator.visibility = View.VISIBLE
+                    binding.tvCollaborativeStatus.text = "Your turn!"
+                    binding.ivMicIndicator.setColorFilter(
+                        ContextCompat.getColor(requireContext(), R.color.primary)
+                    )
+                } else {
+                    binding.collaborativeIndicator.visibility = View.GONE
+                }
+            }
+            UnifiedReaderViewModel.CollaborativeState.LISTENING -> {
+                binding.collaborativeIndicator.visibility = View.VISIBLE
+                binding.tvCollaborativeStatus.text = "Listening..."
+                binding.ivMicIndicator.setColorFilter(
+                    ContextCompat.getColor(requireContext(), R.color.success)
+                )
+            }
+            UnifiedReaderViewModel.CollaborativeState.FEEDBACK -> {
+                binding.collaborativeIndicator.visibility = View.VISIBLE
+                if (state.lastAttemptSuccess == true) {
+                    binding.tvCollaborativeStatus.text = "Correct!"
+                    binding.ivMicIndicator.setColorFilter(
+                        ContextCompat.getColor(requireContext(), R.color.success)
+                    )
+                } else {
+                    val attemptsLeft = 3 - state.attemptCount
+                    binding.tvCollaborativeStatus.text = if (attemptsLeft > 0) {
+                        "Try again ($attemptsLeft left)"
+                    } else {
+                        "Listen..."
+                    }
+                    binding.ivMicIndicator.setColorFilter(
+                        ContextCompat.getColor(requireContext(), R.color.error)
+                    )
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         // Refresh pages in case background processing completed
@@ -332,12 +450,58 @@ class UnifiedReaderFragment : Fragment() {
     override fun onPause() {
         super.onPause()
         viewModel.stopReading()
+        viewModel.cancelSpeechRecognition()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         viewModel.stopReading()
+        viewModel.cancelSpeechRecognition()
         _binding = null
+    }
+
+    /**
+     * Toggle collaborative reading mode with permission check.
+     */
+    private fun toggleCollaborativeMode() {
+        val currentState = viewModel.state.value
+
+        if (currentState.collaborativeMode) {
+            // Turning off - no permission needed
+            viewModel.toggleCollaborativeMode()
+        } else {
+            // Turning on - check permission first
+            if (!viewModel.isSpeechRecognitionAvailable()) {
+                Toast.makeText(
+                    requireContext(),
+                    "Speech recognition is not available on this device",
+                    Toast.LENGTH_LONG
+                ).show()
+                return
+            }
+
+            when {
+                ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    viewModel.toggleCollaborativeMode()
+                }
+                shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> {
+                    MaterialAlertDialogBuilder(requireContext())
+                        .setTitle("Microphone Permission Needed")
+                        .setMessage("Arlo needs microphone access to hear you read words aloud. This helps you practice reading!")
+                        .setPositiveButton("Grant Permission") { _, _ ->
+                            requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+                else -> {
+                    requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+        }
     }
 
     private fun showVoicePicker() {
@@ -371,6 +535,81 @@ class UnifiedReaderFragment : Fragment() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun showSpeedPicker() {
+        val currentRate = viewModel.state.value.speechRate
+
+        // Create dialog layout programmatically
+        val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null, false).let {
+            // Build custom layout
+            android.widget.LinearLayout(requireContext()).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(48, 32, 48, 16)
+
+                // Current speed label
+                val speedLabel = TextView(requireContext()).apply {
+                    text = formatSpeedLabel(currentRate)
+                    textSize = 18f
+                    textAlignment = View.TEXT_ALIGNMENT_CENTER
+                    setPadding(0, 0, 0, 24)
+                }
+                addView(speedLabel)
+
+                // SeekBar: 0-15 maps to 0.25-1.0 in 0.05 increments
+                val seekBar = SeekBar(requireContext()).apply {
+                    max = 15  // 16 positions: 0.25, 0.30, ..., 1.0
+                    progress = ((currentRate - 0.25f) / 0.05f).toInt().coerceIn(0, 15)
+
+                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                            val rate = 0.25f + (progress * 0.05f)
+                            speedLabel.text = formatSpeedLabel(rate)
+                        }
+                        override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                        override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                    })
+                }
+                addView(seekBar)
+
+                // Min/max labels
+                val labelsLayout = android.widget.LinearLayout(requireContext()).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
+                    setPadding(0, 8, 0, 0)
+
+                    val minLabel = TextView(requireContext()).apply {
+                        text = "0.25x"
+                        textSize = 12f
+                    }
+                    addView(minLabel, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+                    val maxLabel = TextView(requireContext()).apply {
+                        text = "1.0x"
+                        textSize = 12f
+                        textAlignment = View.TEXT_ALIGNMENT_VIEW_END
+                    }
+                    addView(maxLabel, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                }
+                addView(labelsLayout)
+
+                tag = seekBar  // Store seekBar reference
+            }
+        }
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Reading Speed")
+            .setView(dialogView)
+            .setPositiveButton("OK") { _, _ ->
+                val seekBar = dialogView.tag as SeekBar
+                val rate = 0.25f + (seekBar.progress * 0.05f)
+                viewModel.setSpeechRate(rate)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun formatSpeedLabel(rate: Float): String {
+        return String.format("%.2fx", rate)
     }
 
     companion object {

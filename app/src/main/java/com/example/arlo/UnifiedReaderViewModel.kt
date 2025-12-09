@@ -1,17 +1,27 @@
 package com.example.arlo
 
 import android.app.Application
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.SoundPool
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.arlo.data.Book
 import com.example.arlo.data.Page
 import com.example.arlo.data.SentenceData
+import com.example.arlo.tts.TTSPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /**
  * ViewModel for the Unified Reader that supports both
@@ -22,6 +32,41 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     private val repository = (application as ArloApplication).repository
     val ttsService = (application as ArloApplication).ttsService
+    private val ttsPreferences = TTSPreferences(application)
+
+    // Speech recognition (inline per reviewer feedback - no separate service)
+    private var speechRecognizer: SpeechRecognizer? = null
+    private val isSpeechAvailable = SpeechRecognizer.isRecognitionAvailable(application)
+
+    // Audio feedback (inline per reviewer feedback - no separate service)
+    private var soundPool: SoundPool? = null
+    private var successSoundId: Int = 0
+    private var errorSoundId: Int = 0
+
+    init {
+        // Load and apply saved speech rate
+        val savedRate = ttsPreferences.getSpeechRate()
+        ttsService.setSpeechRate(savedRate)
+
+        // Initialize SoundPool for audio feedback
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        soundPool = SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(audioAttributes)
+            .build()
+        successSoundId = soundPool?.load(application, R.raw.success_ping, 1) ?: 0
+        errorSoundId = soundPool?.load(application, R.raw.error_buzz, 1) ?: 0
+    }
+
+    // Collaborative reading state (simplified - 3 states max per reviewer feedback)
+    enum class CollaborativeState {
+        IDLE,       // Not listening
+        LISTENING,  // Mic is recording
+        FEEDBACK    // Showing success/error briefly
+    }
 
     // UI State
     data class ReaderState(
@@ -36,7 +81,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val pendingPageCount: Int = 0,
         val needsMorePages: Boolean = false,
         val autoAdvance: Boolean = true,  // Auto-advance to next sentence after TTS finishes
-        val highlightRange: Pair<Int, Int>? = null  // Word highlight start/end offsets for TTS
+        val highlightRange: Pair<Int, Int>? = null,  // Word highlight start/end offsets for TTS
+        val speechRate: Float = 1.0f,  // TTS speech rate (0.25 to 1.0)
+        // Collaborative reading state
+        val collaborativeMode: Boolean = false,
+        val collaborativeState: CollaborativeState = CollaborativeState.IDLE,
+        val targetWord: String? = null,
+        val attemptCount: Int = 0,
+        val lastAttemptSuccess: Boolean? = null  // null = no attempt yet, true = success, false = failure
     ) {
         enum class ReaderMode { FULL_PAGE, SENTENCE }
 
@@ -85,7 +137,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     sentences = sentences,
                     isPlaying = false,
                     needsMorePages = false,
-                    isLoading = false
+                    isLoading = false,
+                    speechRate = ttsPreferences.getSpeechRate()
                 )
             } else {
                 _state.value = ReaderState(
@@ -129,6 +182,16 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      */
     fun toggleAutoAdvance() {
         _state.value = _state.value.copy(autoAdvance = !_state.value.autoAdvance)
+    }
+
+    /**
+     * Set the TTS speech rate (0.25 to 1.0).
+     */
+    fun setSpeechRate(rate: Float) {
+        val clampedRate = rate.coerceIn(0.25f, 1.0f)
+        ttsService.setSpeechRate(clampedRate)
+        ttsPreferences.saveSpeechRate(clampedRate)
+        _state.value = _state.value.copy(speechRate = clampedRate)
     }
 
     /**
@@ -213,12 +276,25 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         if (current.isPlaying) {
             // Stop
             ttsService.stop()
-            _state.value = current.copy(isPlaying = false)
+            cancelSpeechRecognition()
+            _state.value = current.copy(
+                isPlaying = false,
+                collaborativeState = CollaborativeState.IDLE,
+                targetWord = null,
+                attemptCount = 0,
+                lastAttemptSuccess = null
+            )
         } else {
             // Start playing
             when (current.readerMode) {
                 ReaderState.ReaderMode.FULL_PAGE -> speakFullPage()
-                ReaderState.ReaderMode.SENTENCE -> speakCurrentSentence()
+                ReaderState.ReaderMode.SENTENCE -> {
+                    if (current.collaborativeMode) {
+                        speakCurrentSentenceCollaborative()
+                    } else {
+                        speakCurrentSentence()
+                    }
+                }
             }
             _state.value = current.copy(isPlaying = true)
         }
@@ -361,8 +437,301 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    // ==================== COLLABORATIVE READING ====================
+
+    /**
+     * Toggle collaborative reading mode on/off.
+     * Only available in sentence mode.
+     */
+    fun toggleCollaborativeMode() {
+        val current = _state.value
+        if (current.collaborativeMode) {
+            // Turning off - cancel any active recognition
+            cancelSpeechRecognition()
+            _state.value = current.copy(
+                collaborativeMode = false,
+                collaborativeState = CollaborativeState.IDLE,
+                targetWord = null,
+                attemptCount = 0,
+                lastAttemptSuccess = null
+            )
+        } else {
+            // Turning on
+            _state.value = current.copy(
+                collaborativeMode = true,
+                collaborativeState = CollaborativeState.IDLE
+            )
+        }
+    }
+
+    /**
+     * Check if speech recognition is available on this device.
+     */
+    fun isSpeechRecognitionAvailable(): Boolean = isSpeechAvailable
+
+    /**
+     * Extract last word from sentence for collaborative reading.
+     * Returns Pair(lastWord, rangeInSentence) where range is character indices.
+     */
+    private fun extractLastWord(sentence: String): Pair<String, IntRange> {
+        val trimmed = sentence.trim()
+        val lastSpaceIndex = trimmed.lastIndexOf(' ')
+
+        return if (lastSpaceIndex == -1) {
+            // Single word sentence
+            Pair(trimmed, 0 until trimmed.length)
+        } else {
+            val lastWord = trimmed.substring(lastSpaceIndex + 1)
+            Pair(lastWord, (lastSpaceIndex + 1) until trimmed.length)
+        }
+    }
+
+    /**
+     * Normalize word for matching - strip punctuation, lowercase.
+     */
+    private fun normalizeWord(word: String): String {
+        return word.lowercase()
+            .trim()
+            .replace(Regex("[.!?,;:\"'()\\[\\]]"), "")
+    }
+
+    /**
+     * Check if spoken word matches target.
+     * Per reviewer feedback: use Android's confidence-ranked results,
+     * just check if any match (no Levenshtein needed).
+     */
+    private fun isWordMatch(spokenResults: List<String>, targetWord: String): Boolean {
+        val normalizedTarget = normalizeWord(targetWord)
+        return spokenResults.any { spoken ->
+            // Check each word in the spoken result (in case user said extra words)
+            spoken.lowercase().split(" ").any { word ->
+                normalizeWord(word) == normalizedTarget
+            }
+        }
+    }
+
+    /**
+     * Speak current sentence in collaborative mode:
+     * TTS reads all but the last word, then listens for user to speak it.
+     */
+    fun speakCurrentSentenceCollaborative() {
+        val sentence = _state.value.currentSentence ?: return
+
+        // Skip incomplete sentences - use normal TTS
+        if (!sentence.isComplete && _state.value.currentSentenceIndex == _state.value.sentences.lastIndex) {
+            speakCurrentSentence()
+            return
+        }
+
+        val (lastWord, range) = extractLastWord(sentence.text)
+
+        // Store target word for matching
+        _state.value = _state.value.copy(
+            targetWord = lastWord,
+            attemptCount = 0,
+            lastAttemptSuccess = null,
+            collaborativeState = CollaborativeState.IDLE,
+            isPlaying = true
+        )
+
+        // Get text without last word
+        val textWithoutLastWord = sentence.text.substring(0, range.first).trim()
+
+        if (textWithoutLastWord.isEmpty()) {
+            // Single word sentence - go straight to listening
+            onPartialTTSComplete()
+        } else {
+            // Speak partial sentence, then listen
+            if (ttsService.isReady()) {
+                ttsService.speak(textWithoutLastWord) {
+                    onPartialTTSComplete()
+                }
+            }
+        }
+    }
+
+    /**
+     * Called when TTS finishes reading partial sentence.
+     * Starts listening for user's speech.
+     */
+    private fun onPartialTTSComplete() {
+        viewModelScope.launch {
+            // Small delay for audio buffer to clear
+            delay(300)
+            startSpeechRecognition()
+        }
+    }
+
+    /**
+     * Initialize and start speech recognition.
+     */
+    fun startSpeechRecognition() {
+        if (!isSpeechAvailable) {
+            handleSpeechError("Speech recognition not available")
+            return
+        }
+
+        val context = getApplication<Application>()
+
+        // Create recognizer if needed
+        if (speechRecognizer == null) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        }
+
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING)
+            }
+
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?: emptyList()
+                handleSpeechResults(matches)
+            }
+
+            override fun onError(error: Int) {
+                when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH,
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                        // Count as failed attempt
+                        handleSpeechResults(emptyList())
+                    }
+                    else -> {
+                        // Technical error - fall back to normal mode
+                        handleSpeechError("Speech recognition error")
+                    }
+                }
+            }
+
+            // Required but unused callbacks
+            override fun onBeginningOfSpeech() {}
+            override fun onEndOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        // Create recognition intent
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+        }
+
+        _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING)
+        speechRecognizer?.startListening(intent)
+    }
+
+    /**
+     * Handle speech recognition results.
+     */
+    private fun handleSpeechResults(results: List<String>) {
+        val current = _state.value
+        val targetWord = current.targetWord ?: return
+
+        val isMatch = isWordMatch(results, targetWord)
+        val newAttemptCount = current.attemptCount + 1
+
+        if (isMatch) {
+            // Success!
+            playSuccessSound()
+            _state.value = current.copy(
+                collaborativeState = CollaborativeState.FEEDBACK,
+                lastAttemptSuccess = true,
+                attemptCount = newAttemptCount
+            )
+
+            // Auto-advance after brief feedback
+            viewModelScope.launch {
+                delay(500)
+                nextSentence()
+                // Continue if still playing
+                if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                    speakCurrentSentenceCollaborative()
+                }
+            }
+        } else {
+            // Failure
+            playErrorSound()
+            _state.value = current.copy(
+                collaborativeState = CollaborativeState.FEEDBACK,
+                lastAttemptSuccess = false,
+                attemptCount = newAttemptCount
+            )
+
+            if (newAttemptCount >= 3) {
+                // After 3 failures, TTS reads the correct word and advances
+                viewModelScope.launch {
+                    delay(500)
+                    speakCorrectWordAndAdvance(targetWord)
+                }
+            } else {
+                // Try again
+                viewModelScope.launch {
+                    delay(500)
+                    _state.value = _state.value.copy(collaborativeState = CollaborativeState.IDLE)
+                    startSpeechRecognition()
+                }
+            }
+        }
+    }
+
+    /**
+     * TTS reads the correct word after 3 failed attempts, then advances.
+     */
+    private fun speakCorrectWordAndAdvance(word: String) {
+        if (ttsService.isReady()) {
+            ttsService.speak(word) {
+                viewModelScope.launch {
+                    delay(300)
+                    nextSentence()
+                    // Continue if still playing
+                    if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                        speakCurrentSentenceCollaborative()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle speech recognition errors.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleSpeechError(message: String) {
+        // Fall back to normal reading mode
+        _state.value = _state.value.copy(
+            collaborativeMode = false,
+            collaborativeState = CollaborativeState.IDLE,
+            targetWord = null
+        )
+    }
+
+    /**
+     * Cancel any active speech recognition.
+     */
+    fun cancelSpeechRecognition() {
+        speechRecognizer?.cancel()
+        _state.value = _state.value.copy(collaborativeState = CollaborativeState.IDLE)
+    }
+
+    private fun playSuccessSound() {
+        soundPool?.play(successSoundId, 1f, 1f, 1, 0, 1f)
+    }
+
+    private fun playErrorSound() {
+        soundPool?.play(errorSoundId, 1f, 1f, 1, 0, 1f)
+    }
+
     override fun onCleared() {
         super.onCleared()
         ttsService.stop()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        soundPool?.release()
+        soundPool = null
     }
 }
