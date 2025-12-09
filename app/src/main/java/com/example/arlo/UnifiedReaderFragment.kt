@@ -1,8 +1,10 @@
 package com.example.arlo
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.provider.Settings
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
@@ -285,30 +287,43 @@ class UnifiedReaderFragment : Fragment() {
 
                     // Apply highlighting based on mode
                     val spannable = SpannableString(displayText)
+                    var hasHighlight = false
 
-                    if (state.collaborativeMode && state.targetWord != null) {
-                        // Collaborative mode: highlight last word in purple
-                        val lastSpaceIndex = displayText.trim().lastIndexOf(' ')
-                        val lastWordStart = if (lastSpaceIndex == -1) 0 else lastSpaceIndex + 1
-                        val lastWordEnd = displayText.trim().length
+                    // In collaborative mode, highlight the target words when it's user's turn
+                    // Show green when LISTENING or IDLE with targetWord, red on failure
+                    val showCollaborativeHighlight = state.collaborativeMode && (
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING ||
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK ||
+                        (state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.IDLE && state.targetWord != null)
+                    )
+                    if (showCollaborativeHighlight && state.targetWord != null) {
+                        // Find where the target words appear in the display text
+                        // Target words are at the end of the sentence
+                        val trimmedText = displayText.trim()
+                        val targetWords = state.targetWord
+                        val targetStart = trimmedText.length - targetWords.length
+                        val targetEnd = trimmedText.length
 
-                        if (lastWordStart < lastWordEnd) {
+                        if (targetStart >= 0 && targetStart < targetEnd) {
                             // Determine highlight color based on feedback state
+                            // Light green = your turn to read, Red = incorrect
                             val highlightColor = when {
-                                state.lastAttemptSuccess == true -> R.color.success
+                                state.lastAttemptSuccess == true -> R.color.highlight_success
                                 state.lastAttemptSuccess == false -> R.color.error
-                                else -> R.color.highlight_collaborative
+                                else -> R.color.highlight_success  // Light green for "your turn to read"
                             }
                             spannable.setSpan(
                                 BackgroundColorSpan(ContextCompat.getColor(requireContext(), highlightColor)),
-                                lastWordStart,
-                                lastWordEnd,
+                                targetStart,
+                                targetEnd,
                                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                             )
+                            hasHighlight = true
                         }
-                        binding.tvSentence.text = spannable
-                    } else if (state.highlightRange != null && state.isPlaying) {
-                        // Normal TTS word highlighting
+                    }
+
+                    // TTS word highlighting (works in both normal and collaborative modes)
+                    if (state.highlightRange != null && state.isPlaying) {
                         val (start, end) = state.highlightRange
                         if (start >= 0 && end <= displayText.length && start < end) {
                             spannable.setSpan(
@@ -317,13 +332,11 @@ class UnifiedReaderFragment : Fragment() {
                                 end,
                                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                             )
-                            binding.tvSentence.text = spannable
-                        } else {
-                            binding.tvSentence.text = displayText
+                            hasHighlight = true
                         }
-                    } else {
-                        binding.tvSentence.text = displayText
                     }
+
+                    binding.tvSentence.text = if (hasHighlight) spannable else displayText
 
                     // Orange tint for incomplete sentences
                     val textColor = if (state.isLastSentenceIncomplete) {
@@ -401,6 +414,7 @@ class UnifiedReaderFragment : Fragment() {
         // Show indicator based on collaborative state
         when (state.collaborativeState) {
             UnifiedReaderViewModel.CollaborativeState.IDLE -> {
+                binding.micLevelIndicator.visibility = View.GONE
                 if (state.targetWord != null) {
                     // Waiting for user to speak
                     binding.collaborativeIndicator.visibility = View.VISIBLE
@@ -414,13 +428,22 @@ class UnifiedReaderFragment : Fragment() {
             }
             UnifiedReaderViewModel.CollaborativeState.LISTENING -> {
                 binding.collaborativeIndicator.visibility = View.VISIBLE
-                binding.tvCollaborativeStatus.text = "Listening..."
+                val attemptNum = state.attemptCount + 1  // attemptCount is 0-indexed, display as 1-indexed
+                binding.tvCollaborativeStatus.text = if (attemptNum > 1) {
+                    "Listening... ($attemptNum of 3)"
+                } else {
+                    "Listening..."
+                }
                 binding.ivMicIndicator.setColorFilter(
                     ContextCompat.getColor(requireContext(), R.color.success)
                 )
+                // Show and update mic level indicator
+                binding.micLevelIndicator.visibility = View.VISIBLE
+                binding.micLevelIndicator.progress = state.micLevel
             }
             UnifiedReaderViewModel.CollaborativeState.FEEDBACK -> {
                 binding.collaborativeIndicator.visibility = View.VISIBLE
+                binding.micLevelIndicator.visibility = View.GONE
                 if (state.lastAttemptSuccess == true) {
                     binding.tvCollaborativeStatus.text = "Correct!"
                     binding.ivMicIndicator.setColorFilter(
@@ -472,11 +495,16 @@ class UnifiedReaderFragment : Fragment() {
         } else {
             // Turning on - check permission first
             if (!viewModel.isSpeechRecognitionAvailable()) {
-                Toast.makeText(
-                    requireContext(),
-                    "Speech recognition is not available on this device",
-                    Toast.LENGTH_LONG
-                ).show()
+                // Show diagnostic dialog instead of just a toast
+                MaterialAlertDialogBuilder(requireContext())
+                    .setTitle("Speech Recognition Unavailable")
+                    .setMessage(
+                        "Speech recognition is not available on this device.\n\n" +
+                        "Diagnostics:\n${viewModel.speechDiagnostics}\n\n" +
+                        "For Fire tablets, you may need to install Google Play Services."
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
                 return
             }
 
@@ -508,33 +536,59 @@ class UnifiedReaderFragment : Fragment() {
         val ttsService = viewModel.ttsService
         val voices = ttsService.getAvailableVoices()
 
-        if (voices.isEmpty()) {
-            MaterialAlertDialogBuilder(requireContext())
-                .setTitle("No Voices Available")
-                .setMessage("No text-to-speech voices are installed on this device.")
-                .setPositiveButton("OK", null)
-                .show()
-            return
-        }
+        // Build voice list with download option at the end
+        val voiceNames = voices.map { it.name }.toMutableList()
+        voiceNames.add("Download More Voices...")
 
         val currentVoiceId = ttsService.getCurrentVoiceId()
-        val voiceNames = voices.map { "${it.name} (${it.locale})" }.toTypedArray()
-        val selectedIndex = voices.indexOfFirst { it.id == currentVoiceId }.coerceAtLeast(0)
+        val originalVoiceId = currentVoiceId
+        var selectedIndex = voices.indexOfFirst { it.id == currentVoiceId }.coerceAtLeast(0)
 
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("Select Voice")
-            .setSingleChoiceItems(voiceNames, selectedIndex) { dialog, which ->
-                val selectedVoice = voices[which]
-                ttsService.setVoice(selectedVoice.id)
+            .setSingleChoiceItems(voiceNames.toTypedArray(), selectedIndex) { dialog, which ->
+                if (which == voices.size) {
+                    // "Download More Voices" selected - open TTS settings
+                    dialog.dismiss()
+                    openTtsSettings()
+                } else {
+                    selectedIndex = which
+                    val selectedVoice = voices[which]
+                    ttsService.setVoice(selectedVoice.id)
 
-                // Preview the voice with a sample
+                    // Preview the voice at full speed
+                    ttsService.stop()
+                    ttsService.speakPreview("Hello, I'm your reading assistant.")
+                }
+            }
+            .setPositiveButton("Update") { dialog, _ ->
+                // Voice is already set from selection, just dismiss
                 ttsService.stop()
-                ttsService.speak("Hello, I'm your reading assistant.")
-
                 dialog.dismiss()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Cancel") { dialog, _ ->
+                // Restore original voice
+                ttsService.stop()
+                if (originalVoiceId != null) {
+                    ttsService.setVoice(originalVoiceId)
+                }
+                dialog.dismiss()
+            }
             .show()
+    }
+
+    private fun openTtsSettings() {
+        try {
+            val intent = Intent("com.android.settings.TTS_SETTINGS")
+            startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                startActivity(intent)
+            } catch (e2: Exception) {
+                Toast.makeText(requireContext(), "Could not open settings", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun showSpeedPicker() {

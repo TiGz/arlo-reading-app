@@ -71,7 +71,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Change voice"
             android:padding="12dp"
-            android:src="@drawable/ic_voice"
+            android:src="@drawable/ic_speaker"
             android:tooltipText="Change voice"
             app:tint="@color/primary" />
 
@@ -218,26 +218,48 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:gravity="center"
-                    android:orientation="horizontal"
+                    android:orientation="vertical"
                     android:visibility="gone"
                     tools:visibility="visible">
 
-                    <ImageView
-                        android:id="@+id/ivMicIndicator"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_marginEnd="8dp"
-                        android:src="@drawable/ic_mic"
-                        app:tint="@color/primary" />
-
-                    <TextView
-                        android:id="@+id/tvCollaborativeStatus"
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textColor="@color/primary"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        tools:text="Your turn!" />
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/ivMicIndicator"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="8dp"
+                            android:src="@drawable/ic_mic"
+                            app:tint="@color/primary" />
+
+                        <TextView
+                            android:id="@+id/tvCollaborativeStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/primary"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            tools:text="Your turn!" />
+
+                    </LinearLayout>
+
+                    <!-- Mic level indicator -->
+                    <ProgressBar
+                        android:id="@+id/micLevelIndicator"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="150dp"
+                        android:layout_height="8dp"
+                        android:layout_marginTop="8dp"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressTint="@color/primary"
+                        android:visibility="gone"
+                        tools:progress="50"
+                        tools:visibility="visible" />
 
                 </LinearLayout>
 

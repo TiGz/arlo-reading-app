@@ -20,7 +20,13 @@ import androidx.room.PrimaryKey
 data class Page(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val bookId: Long,
-    val text: String,
-    val imagePath: String, // Path to the original image
-    val pageNumber: Int
+    val text: String = "",
+    val imagePath: String,
+    val pageNumber: Int,
+    val sentencesJson: String? = null,       // JSON array of SentenceData
+    val lastSentenceComplete: Boolean = true,  // For sentence continuation logic
+    // Queue management
+    val processingStatus: String = "COMPLETED",  // PENDING, PROCESSING, COMPLETED, FAILED
+    val errorMessage: String? = null,
+    val retryCount: Int = 0
 )

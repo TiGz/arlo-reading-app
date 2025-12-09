@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
     id("kotlin-kapt") // For Room
+}
+
+// Load local.properties
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(localPropertiesFile.inputStream())
+    }
 }
 
 android {
@@ -16,6 +26,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // DEV ONLY: Bake API key from local.properties or environment
+        val apiKey = localProperties.getProperty("ANTHROPIC_API_KEY")
+            ?: System.getenv("ANTHROPIC_API_KEY")
+            ?: ""
+        buildConfigField("String", "ANTHROPIC_API_KEY", "\"$apiKey\"")
     }
 
     buildTypes {
@@ -36,12 +52,15 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 
 dependencies {
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.constraintlayout)
@@ -53,8 +72,12 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // ML Kit
-    implementation(libs.mlkit.text.recognition)
+    // HTTP & JSON (for Claude API)
+    implementation(libs.okhttp)
+    implementation(libs.gson)
+
+    // Security (for API key storage)
+    implementation(libs.androidx.security.crypto)
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -64,6 +87,9 @@ dependencies {
     // Lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+
+    // Image Loading
+    implementation(libs.coil)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -1,6 +1,7 @@
 package com.example.arlo
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.SoundPool
@@ -8,6 +9,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.arlo.data.Book
@@ -36,7 +38,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     // Speech recognition (inline per reviewer feedback - no separate service)
     private var speechRecognizer: SpeechRecognizer? = null
-    private val isSpeechAvailable = SpeechRecognizer.isRecognitionAvailable(application)
+    private val isSpeechAvailable: Boolean
+    val speechDiagnostics: String
 
     // Audio feedback (inline per reviewer feedback - no separate service)
     private var soundPool: SoundPool? = null
@@ -47,6 +50,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         // Load and apply saved speech rate
         val savedRate = ttsPreferences.getSpeechRate()
         ttsService.setSpeechRate(savedRate)
+
+        // Get speech recognition availability from Application-level diagnostics
+        val arloApp = application as ArloApplication
+        isSpeechAvailable = arloApp.isSpeechRecognitionAvailable
+        speechDiagnostics = arloApp.speechRecognitionDiagnostics
 
         // Initialize SoundPool for audio feedback
         val audioAttributes = AudioAttributes.Builder()
@@ -75,7 +83,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val currentPageIndex: Int = 0,
         val currentSentenceIndex: Int = 0,
         val sentences: List<SentenceData> = emptyList(),
-        val readerMode: ReaderMode = ReaderMode.FULL_PAGE,
+        val readerMode: ReaderMode = ReaderMode.SENTENCE,
         val isPlaying: Boolean = false,
         val isLoading: Boolean = true,
         val pendingPageCount: Int = 0,
@@ -88,7 +96,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val collaborativeState: CollaborativeState = CollaborativeState.IDLE,
         val targetWord: String? = null,
         val attemptCount: Int = 0,
-        val lastAttemptSuccess: Boolean? = null  // null = no attempt yet, true = success, false = failure
+        val lastAttemptSuccess: Boolean? = null,  // null = no attempt yet, true = success, false = failure
+        val micLevel: Int = 0  // 0-100 mic input level for visual feedback
     ) {
         enum class ReaderMode { FULL_PAGE, SENTENCE }
 
@@ -121,6 +130,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Use completed pages only (filter out processing/pending)
             val pages = withContext(Dispatchers.IO) { repository.getCompletedPagesSync(bookId) }
 
+            // Load saved preferences
+            val savedCollaborativeMode = ttsPreferences.getCollaborativeMode()
+            val savedAutoAdvance = ttsPreferences.getAutoAdvance()
+            val savedSpeechRate = ttsPreferences.getSpeechRate()
+
             if (book != null && pages.isNotEmpty()) {
                 // Resume from last position or start at beginning
                 val startPageIndex = pages.indexOfFirst { it.pageNumber == book.lastReadPageNumber }
@@ -138,14 +152,18 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     isPlaying = false,
                     needsMorePages = false,
                     isLoading = false,
-                    speechRate = ttsPreferences.getSpeechRate()
+                    speechRate = savedSpeechRate,
+                    collaborativeMode = savedCollaborativeMode,
+                    autoAdvance = savedAutoAdvance
                 )
             } else {
                 _state.value = ReaderState(
                     book = book,
                     pages = pages,
                     isLoading = false,
-                    needsMorePages = pages.isEmpty()
+                    needsMorePages = pages.isEmpty(),
+                    collaborativeMode = savedCollaborativeMode,
+                    autoAdvance = savedAutoAdvance
                 )
             }
 
@@ -181,7 +199,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      * When disabled, TTS reads one sentence and waits for user to tap next.
      */
     fun toggleAutoAdvance() {
-        _state.value = _state.value.copy(autoAdvance = !_state.value.autoAdvance)
+        val newValue = !_state.value.autoAdvance
+        ttsPreferences.saveAutoAdvance(newValue)
+        _state.value = _state.value.copy(autoAdvance = newValue)
     }
 
     /**
@@ -224,7 +244,13 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         if (nextIndex < current.sentences.size) {
             // Move to next sentence on same page
-            _state.value = current.copy(currentSentenceIndex = nextIndex, highlightRange = null)
+            _state.value = current.copy(
+                currentSentenceIndex = nextIndex,
+                highlightRange = null,
+                targetWord = null,  // Clear until TTS reaches the word
+                attemptCount = 0,
+                lastAttemptSuccess = null
+            )
             saveReadingPosition()
         } else {
             // Try to move to next page
@@ -247,7 +273,13 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         if (prevIndex >= 0) {
             // Move to previous sentence on same page
-            _state.value = current.copy(currentSentenceIndex = prevIndex, highlightRange = null)
+            _state.value = current.copy(
+                currentSentenceIndex = prevIndex,
+                highlightRange = null,
+                targetWord = null,  // Clear until TTS reaches the word
+                attemptCount = 0,
+                lastAttemptSuccess = null
+            )
             saveReadingPosition()
         } else {
             // Try to move to previous page
@@ -445,6 +477,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      */
     fun toggleCollaborativeMode() {
         val current = _state.value
+        val newMode = !current.collaborativeMode
+        ttsPreferences.saveCollaborativeMode(newMode)
+
         if (current.collaborativeMode) {
             // Turning off - cancel any active recognition
             cancelSpeechRecognition()
@@ -456,7 +491,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 lastAttemptSuccess = null
             )
         } else {
-            // Turning on
+            // Turning on - don't set targetWord yet, only highlight when it's time to read
             _state.value = current.copy(
                 collaborativeMode = true,
                 collaborativeState = CollaborativeState.IDLE
@@ -470,20 +505,66 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     fun isSpeechRecognitionAvailable(): Boolean = isSpeechAvailable
 
     /**
-     * Extract last word from sentence for collaborative reading.
-     * Returns Pair(lastWord, rangeInSentence) where range is character indices.
+     * Extract target words from sentence for collaborative reading.
+     * If the last word is single-syllable, extract last 2 words for better recognition.
+     * Returns Pair(targetWords, rangeInSentence) where range is character indices.
      */
-    private fun extractLastWord(sentence: String): Pair<String, IntRange> {
+    private fun extractTargetWords(sentence: String): Pair<String, IntRange> {
         val trimmed = sentence.trim()
-        val lastSpaceIndex = trimmed.lastIndexOf(' ')
+        val words = trimmed.split(" ")
 
-        return if (lastSpaceIndex == -1) {
-            // Single word sentence
-            Pair(trimmed, 0 until trimmed.length)
+        if (words.size <= 1) {
+            // Single word sentence - user reads the whole thing
+            return Pair(trimmed, 0 until trimmed.length)
+        }
+
+        val lastWord = words.last()
+        val lastWordClean = normalizeWord(lastWord)
+
+        // Check if last word is single-syllable (use vowel count as heuristic)
+        val isSingleSyllable = countSyllables(lastWordClean) <= 1
+
+        return if (isSingleSyllable && words.size >= 2) {
+            // Use last 2 words for short words like "it", "the", "is", etc.
+            val secondLastSpaceIndex = trimmed.lastIndexOf(' ', trimmed.lastIndexOf(' ') - 1)
+            if (secondLastSpaceIndex == -1) {
+                // Only 2 words total - user reads both
+                Pair(trimmed, 0 until trimmed.length)
+            } else {
+                val lastTwoWords = trimmed.substring(secondLastSpaceIndex + 1)
+                Pair(lastTwoWords, (secondLastSpaceIndex + 1) until trimmed.length)
+            }
         } else {
-            val lastWord = trimmed.substring(lastSpaceIndex + 1)
+            // Use just the last word
+            val lastSpaceIndex = trimmed.lastIndexOf(' ')
             Pair(lastWord, (lastSpaceIndex + 1) until trimmed.length)
         }
+    }
+
+    /**
+     * Count syllables in a word using vowel groups as heuristic.
+     * Not perfect but good enough for detecting short words.
+     */
+    private fun countSyllables(word: String): Int {
+        if (word.isEmpty()) return 0
+        val vowels = "aeiouy"
+        var count = 0
+        var prevWasVowel = false
+
+        for (char in word.lowercase()) {
+            val isVowel = char in vowels
+            if (isVowel && !prevWasVowel) {
+                count++
+            }
+            prevWasVowel = isVowel
+        }
+
+        // Handle silent 'e' at end
+        if (word.lowercase().endsWith("e") && count > 1) {
+            count--
+        }
+
+        return count.coerceAtLeast(1)
     }
 
     /**
@@ -496,19 +577,30 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * Check if spoken word matches target.
-     * Per reviewer feedback: use Android's confidence-ranked results,
-     * just check if any match (no Levenshtein needed).
+     * Check if spoken words match target.
+     * Handles both single words and multi-word targets (e.g., "read it").
      */
-    private fun isWordMatch(spokenResults: List<String>, targetWord: String): Boolean {
-        val normalizedTarget = normalizeWord(targetWord)
+    private fun isWordMatch(spokenResults: List<String>, targetWords: String): Boolean {
+        val targetWordsList = targetWords.lowercase().split(" ").map { normalizeWord(it) }
+
         return spokenResults.any { spoken ->
-            // Check each word in the spoken result (in case user said extra words)
-            spoken.lowercase().split(" ").any { word ->
-                normalizeWord(word) == normalizedTarget
+            val spokenWordsList = spoken.lowercase().split(" ").map { normalizeWord(it) }
+
+            // Check if all target words appear in order in the spoken result
+            if (targetWordsList.size == 1) {
+                // Single word - just check if it appears anywhere
+                spokenWordsList.any { it == targetWordsList[0] }
+            } else {
+                // Multiple words - check if they appear in sequence
+                val spokenJoined = spokenWordsList.joinToString(" ")
+                val targetJoined = targetWordsList.joinToString(" ")
+                spokenJoined.contains(targetJoined)
             }
         }
     }
+
+    // Store target words outside of state to avoid race conditions with TTS callbacks
+    private var currentTargetWords: String? = null
 
     /**
      * Speak current sentence in collaborative mode:
@@ -523,28 +615,37 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             return
         }
 
-        val (lastWord, range) = extractLastWord(sentence.text)
+        val (targetWords, range) = extractTargetWords(sentence.text)
+        Log.d("SpeechRecognition", "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
 
-        // Store target word for matching
+        // Store target words locally AND in state (local copy avoids race conditions)
+        currentTargetWords = targetWords
         _state.value = _state.value.copy(
-            targetWord = lastWord,
+            targetWord = targetWords,
             attemptCount = 0,
             lastAttemptSuccess = null,
             collaborativeState = CollaborativeState.IDLE,
             isPlaying = true
         )
 
-        // Get text without last word
-        val textWithoutLastWord = sentence.text.substring(0, range.first).trim()
+        // Get text without target words
+        val textWithoutTargetWords = sentence.text.substring(0, range.first).trim()
 
-        if (textWithoutLastWord.isEmpty()) {
+        if (textWithoutTargetWords.isEmpty()) {
             // Single word sentence - go straight to listening
-            onPartialTTSComplete()
+            onPartialTTSComplete(targetWords)
         } else {
             // Speak partial sentence, then listen
             if (ttsService.isReady()) {
-                ttsService.speak(textWithoutLastWord) {
-                    onPartialTTSComplete()
+                // Set up word highlighting callback for collaborative mode too
+                ttsService.setOnRangeStartListener { start, end ->
+                    _state.value = _state.value.copy(highlightRange = Pair(start, end))
+                }
+
+                ttsService.speak(textWithoutTargetWords) {
+                    // Clear highlight when done speaking partial sentence
+                    _state.value = _state.value.copy(highlightRange = null)
+                    onPartialTTSComplete(targetWords)
                 }
             }
         }
@@ -554,10 +655,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      * Called when TTS finishes reading partial sentence.
      * Starts listening for user's speech.
      */
-    private fun onPartialTTSComplete() {
+    private fun onPartialTTSComplete(targetWords: String) {
+        Log.d("SpeechRecognition", "onPartialTTSComplete: targetWords='$targetWords'")
+        // Re-set targetWord in state in case it was lost to race conditions
+        _state.value = _state.value.copy(targetWord = targetWords)
         viewModelScope.launch {
             // Small delay for audio buffer to clear
             delay(300)
+            Log.d("SpeechRecognition", "After delay, before startSpeechRecognition: targetWord='${_state.value.targetWord}'")
             startSpeechRecognition()
         }
     }
@@ -573,23 +678,51 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         val context = getApplication<Application>()
 
-        // Create recognizer if needed
+        // Create recognizer if needed - explicitly use Google's speech recognizer on Fire tablets
+        // to avoid SecurityException when Fire OS tries to bind to Amazon's Alexa service
         if (speechRecognizer == null) {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            speechRecognizer = try {
+                // Try Google's speech recognizer first (required for Fire tablets with sideloaded Google app)
+                val googleComponent = ComponentName(
+                    "com.google.android.googlequicksearchbox",
+                    "com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
+                )
+                SpeechRecognizer.createSpeechRecognizer(context, googleComponent)
+            } catch (e: Exception) {
+                Log.w("SpeechRecognition", "Failed to create Google recognizer, falling back to default: ${e.message}")
+                // Fall back to default (may not work on Fire tablets)
+                SpeechRecognizer.createSpeechRecognizer(context)
+            }
         }
 
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
+                Log.d("SpeechRecognition", "onReadyForSpeech")
                 _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING)
             }
 
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?: emptyList()
+                Log.d("SpeechRecognition", "onResults: $matches")
                 handleSpeechResults(matches)
             }
 
             override fun onError(error: Int) {
+                val errorName = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "ERROR_AUDIO"
+                    SpeechRecognizer.ERROR_CLIENT -> "ERROR_CLIENT"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "ERROR_INSUFFICIENT_PERMISSIONS"
+                    SpeechRecognizer.ERROR_NETWORK -> "ERROR_NETWORK"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ERROR_NETWORK_TIMEOUT"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "ERROR_NO_MATCH"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "ERROR_RECOGNIZER_BUSY"
+                    SpeechRecognizer.ERROR_SERVER -> "ERROR_SERVER"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "ERROR_SPEECH_TIMEOUT"
+                    else -> "UNKNOWN($error)"
+                }
+                Log.e("SpeechRecognition", "onError: $errorName")
+
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH,
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
@@ -598,31 +731,74 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     }
                     else -> {
                         // Technical error - fall back to normal mode
-                        handleSpeechError("Speech recognition error")
+                        handleSpeechError("Speech recognition error: $errorName")
                     }
                 }
             }
 
             // Required but unused callbacks
-            override fun onBeginningOfSpeech() {}
-            override fun onEndOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onBeginningOfSpeech() {
+                Log.d("SpeechRecognition", "onBeginningOfSpeech")
+            }
+            override fun onEndOfSpeech() {
+                Log.d("SpeechRecognition", "onEndOfSpeech")
+            }
+            override fun onRmsChanged(rmsdB: Float) {
+                // Convert RMS dB to 0-100 level for UI
+                // RMS typically ranges from -2 to 10 dB
+                val level = ((rmsdB + 2) / 12 * 100).toInt().coerceIn(0, 100)
+                _state.value = _state.value.copy(micLevel = level)
+            }
+            override fun onBufferReceived(buffer: ByteArray?) {
+                Log.d("SpeechRecognition", "onBufferReceived: ${buffer?.size} bytes")
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?: emptyList()
+                Log.d("SpeechRecognition", "onPartialResults: $partial")
+
+                // Check partial results for short words - they often don't make it to final results
+                if (partial.isNotEmpty()) {
+                    val targetWord = _state.value.targetWord
+                    if (targetWord != null && isWordMatch(partial, targetWord)) {
+                        // Found a match in partial results - accept it immediately
+                        Log.d("SpeechRecognition", "Partial match found for '$targetWord' in: $partial")
+                        speechRecognizer?.cancel()  // Stop listening
+                        handleSpeechResults(partial)
+                    }
+                }
+            }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
         // Create recognition intent
+        // Note: Short words like "it" require minimal timing constraints
+        val targetWord = _state.value.targetWord ?: ""
+        Log.d("SpeechRecognition", "Starting recognition for target word: '$targetWord'")
+
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)  // More results to find matches
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)  // Capture short words via partial results
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 100L)  // Very short minimum (100ms)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)  // Slightly longer to capture full word
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
         }
 
-        _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING)
-        speechRecognizer?.startListening(intent)
+        _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING, micLevel = 0)
+
+        Log.d("SpeechRecognition", "About to call startListening...")
+        try {
+            speechRecognizer?.startListening(intent)
+            Log.d("SpeechRecognition", "startListening called successfully")
+        } catch (e: SecurityException) {
+            Log.e("SpeechRecognition", "SecurityException starting listening: ${e.message}")
+            handleSpeechError("Cannot access speech recognition service")
+        } catch (e: Exception) {
+            Log.e("SpeechRecognition", "Exception starting listening: ${e.message}")
+            handleSpeechError("Speech recognition failed to start")
+        }
     }
 
     /**
@@ -633,6 +809,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val targetWord = current.targetWord ?: return
 
         val isMatch = isWordMatch(results, targetWord)
+        Log.d("SpeechRecognition", "handleSpeechResults: results=$results, target='$targetWord', isMatch=$isMatch")
         val newAttemptCount = current.attemptCount + 1
 
         if (isMatch) {
@@ -647,10 +824,15 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Auto-advance after brief feedback
             viewModelScope.launch {
                 delay(500)
+                Log.d("SpeechRecognition", "Success delay complete, calling nextSentence()")
                 nextSentence()
+                Log.d("SpeechRecognition", "After nextSentence: isPlaying=${_state.value.isPlaying}, needsMorePages=${_state.value.needsMorePages}")
                 // Continue if still playing
                 if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                    Log.d("SpeechRecognition", "Continuing to next sentence...")
                     speakCurrentSentenceCollaborative()
+                } else {
+                    Log.d("SpeechRecognition", "NOT continuing: isPlaying=${_state.value.isPlaying}, needsMorePages=${_state.value.needsMorePages}")
                 }
             }
         } else {

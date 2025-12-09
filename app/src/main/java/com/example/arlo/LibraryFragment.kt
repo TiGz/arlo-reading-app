@@ -4,9 +4,10 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import com.example.arlo.databinding.FragmentLibraryBinding
 
 class LibraryFragment : Fragment() {
@@ -26,27 +27,59 @@ class LibraryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val adapter = BookAdapter { book ->
-            // Navigate to Reader
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.container, ReaderFragment.newInstance(book.id))
-                .addToBackStack(null)
-                .commit()
-        }
-        binding.recyclerView.layoutManager = LinearLayoutManager(context)
+        val adapter = BookAdapter(
+            onBookClick = { book ->
+                // Navigate to Reader
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.container, UnifiedReaderFragment.newInstance(book.id))
+                    .addToBackStack(null)
+                    .commit()
+            },
+            onBookLongClick = { bookWithInfo ->
+                showDeleteConfirmation(bookWithInfo)
+            }
+        )
+
+        // Use GridLayoutManager with 2 columns for book cover display
+        binding.recyclerView.layoutManager = GridLayoutManager(context, 2)
         binding.recyclerView.adapter = adapter
 
-        viewModel.allBooks.observe(viewLifecycleOwner) { books ->
-            adapter.submitList(books)
+        // Observe books with page count info
+        viewModel.allBooksWithInfo.observe(viewLifecycleOwner) { booksWithInfo ->
+            adapter.submitList(booksWithInfo)
+            binding.emptyState.visibility = if (booksWithInfo.isEmpty()) View.VISIBLE else View.GONE
+            binding.recyclerView.visibility = if (booksWithInfo.isEmpty()) View.GONE else View.VISIBLE
+
+            // Update subtitle with book count
+            binding.tvSubtitle.text = when (booksWithInfo.size) {
+                0 -> "Your captured books"
+                1 -> "1 book in your collection"
+                else -> "${booksWithInfo.size} books in your collection"
+            }
         }
 
         binding.fabAddBook.setOnClickListener {
-            // Navigate to Camera
+            // Navigate to Camera for new book (cover capture flow)
             parentFragmentManager.beginTransaction()
                 .replace(R.id.container, CameraFragment.newInstance(CameraFragment.MODE_NEW_BOOK))
                 .addToBackStack(null)
                 .commit()
         }
+    }
+
+    private fun showDeleteConfirmation(bookWithInfo: BookWithInfo) {
+        val book = bookWithInfo.book
+        val pageCount = bookWithInfo.pageCount
+        val pageText = if (pageCount == 1) "1 page" else "$pageCount pages"
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete Book")
+            .setMessage("Delete \"${book.title}\" and all its $pageText?\n\nThis action cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                viewModel.deleteBook(book.id)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     override fun onDestroyView() {

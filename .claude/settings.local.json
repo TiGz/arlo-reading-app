@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(~/Library/Android/sdk/emulator/emulator:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(./gradlew installDebug:*)",
+      "Bash(cat:*)",
+      "Skill(frontend-design:frontend-design)",
+      "WebSearch",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell:*)",
+      "SlashCommand(/compounding-engineering:workflows:plan:*)",
+      "mcp__plugin_compounding-engineering_context7__resolve-library-id",
+      "mcp__plugin_compounding-engineering_context7__get-library-docs",
+      "SlashCommand(/compounding-engineering:plan_review:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nFix word highlighting during TTS playback\n\nWire up the TTS onRangeStart callback to highlight words during\nsentence reading mode. The infrastructure was already in place\nbut wasn''t being used.\n\n- Add highlightRange to ReaderState for tracking word positions\n- Register setOnRangeStartListener in speakCurrentSentence/speakFullPage\n- Clear highlight on stop/sentence change/mode toggle\n- Apply BackgroundColorSpan in Fragment when highlight range updates\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(mkdir:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd collaborative reading mode for sentence-by-sentence practice\n\nIn sentence mode, TTS reads all but the last word, then listens for the\nuser to speak it aloud. Correct answers play a ping and auto-advance;\nincorrect answers allow 3 retries before TTS reads the word and continues.\n\n- Add RECORD_AUDIO permission for speech recognition\n- Add SpeechRecognizer and SoundPool inline in ViewModel (3-state machine)\n- Add mic toggle button and visual feedback in Fragment\n- Add success/error sound effects and purple highlight color\n- Handle runtime permission request with rationale dialog\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -c)",
+      "Bash(./gradlew:*)",
+      "Bash(./gradlew properties:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb kill-server)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb start-server)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -s SpeechRecognition:D)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

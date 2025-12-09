@@ -7,6 +7,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Required for Android 11+ package visibility to detect speech recognition services -->
+    <queries>
+        <!-- Google Speech Recognition -->
+        <package android:name="com.google.android.googlequicksearchbox" />
+        <package android:name="com.google.android.gms" />
+        <!-- Speech recognition intent -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ArloApplication"
         android:allowBackup="true"
@@ -18,14 +32,21 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ArloReadingApp"
         tools:targetApi="31">
+        <!-- Speech Setup Activity - shown on first launch for Fire tablets -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name=".speech.SpeechSetupActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ArloReadingApp">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- Main Activity - not the launcher anymore -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false">
         </activity>
     </application>
 

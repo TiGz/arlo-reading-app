@@ -32,6 +32,7 @@
     <color name="highlight_word">#FFE8A0</color>
     <color name="highlight_word_strong">#FFD54F</color>
     <color name="highlight_collaborative">#D4B8E8</color>  <!-- Purple for "your turn" -->
+    <color name="highlight_success">#B8E8C0</color>  <!-- Light green for collaborative reading -->
 
     <!-- UI Elements -->
     <color name="divider">#E5DFD5</color>
@@ -40,8 +41,16 @@
 
     <!-- Status -->
     <color name="success">#4A7C59</color>
+    <color name="success_green">#4CAF50</color>
     <color name="error">#C44536</color>
+    <color name="error_red">#F44336</color>
     <color name="warning">#D4A03E</color>
+
+    <!-- Setup Screen -->
+    <color name="background_cream">#FAF6F0</color>
+    <color name="primary_burgundy">#8B3A3A</color>
+    <color name="secondary_gold">#C4A35A</color>
+    <color name="text_tertiary">#9C9589</color>
     <color name="warning_background">#FFF3CD</color>
     <color name="warning_text">#856404</color>
 

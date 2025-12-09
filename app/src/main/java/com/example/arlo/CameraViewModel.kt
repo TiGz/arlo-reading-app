@@ -4,54 +4,158 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.arlo.data.BookRepository
-import com.example.arlo.ml.OCRService
+import com.example.arlo.ml.ClaudeOCRService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CameraViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = (application as ArloApplication).repository
-    private val ocrService = OCRService(application)
+    private val claudeOCR = ClaudeOCRService(application)
+    private val apiKeyManager = ApiKeyManager(application)
 
-    fun createBook(imageUri: Uri, onResult: (Long) -> Unit) {
+    sealed class OCRResult {
+        data class Success(val data: Any? = null) : OCRResult()
+        data class Error(val message: String, val isApiKeyError: Boolean = false) : OCRResult()
+    }
+
+    /**
+     * Extract title text from cover image using Claude OCR
+     */
+    fun extractTitleFromCover(imageUri: Uri, onResult: (String?, OCRResult) -> Unit) {
+        val apiKey = apiKeyManager.getApiKey()
+        if (apiKey.isNullOrBlank()) {
+            onResult(null, OCRResult.Error("API key not configured", isApiKeyError = true))
+            return
+        }
+
         viewModelScope.launch {
             try {
-                // 1. Run OCR
-                val text = ocrService.processImage(imageUri)
-
-                // 2. Create Book
-                val bookId = repository.createBook("Scanned Book ${System.currentTimeMillis()}")
-
-                // 3. Save Page (Page 1)
-                repository.addPage(bookId, text, imageUri.toString(), 1)
-
-                onResult(bookId)
+                val title = withContext(Dispatchers.IO) {
+                    claudeOCR.extractTitle(imageUri, apiKey)
+                }
+                withContext(Dispatchers.Main) {
+                    onResult(title, OCRResult.Success())
+                }
+            } catch (e: ClaudeOCRService.InvalidApiKeyException) {
+                withContext(Dispatchers.Main) {
+                    onResult(null, OCRResult.Error("Invalid API key", isApiKeyError = true))
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                // Handle error
+                withContext(Dispatchers.Main) {
+                    onResult(null, OCRResult.Error(e.message ?: "OCR failed"))
+                }
             }
         }
     }
 
-    fun addPageToBook(bookId: Long, imageUri: Uri, onResult: () -> Unit) {
+    /**
+     * Create a new book with cover image
+     */
+    fun createBookWithCover(title: String, coverImagePath: String, onResult: (Long) -> Unit) {
         viewModelScope.launch {
             try {
-                // 1. Run OCR
-                val text = ocrService.processImage(imageUri)
+                val bookId = repository.createBook(title, coverImagePath)
+                withContext(Dispatchers.Main) {
+                    onResult(bookId)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
-                // 2. Get current page count to determine new page number
-                // For MVP, we might need a way to get max page number. 
-                // A simple query or counting existing pages would work.
-                // Let's assume we can get the last page number or just count.
-                // For now, let's just use a timestamp or auto-increment if possible, 
-                // but our Page entity has pageNumber.
-                // Let's add a method to repo to get next page number.
+    /**
+     * Add a page to existing book using Claude OCR with sentence extraction
+     */
+    fun addPageToBook(bookId: Long, imageUri: Uri, onResult: (OCRResult) -> Unit) {
+        val apiKey = apiKeyManager.getApiKey()
+        if (apiKey.isNullOrBlank()) {
+            onResult(OCRResult.Error("API key not configured", isApiKeyError = true))
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val ocrResult = withContext(Dispatchers.IO) {
+                    claudeOCR.extractSentences(imageUri, apiKey)
+                }
                 val nextPageNum = repository.getNextPageNumber(bookId)
 
-                // 3. Save Page
-                repository.addPage(bookId, text, imageUri.toString(), nextPageNum)
+                // Use new method that handles sentence continuation
+                repository.addPageWithSentences(
+                    bookId = bookId,
+                    imagePath = imageUri.toString(),
+                    pageNumber = nextPageNum,
+                    sentences = ocrResult.sentences
+                )
 
-                onResult()
+                withContext(Dispatchers.Main) {
+                    onResult(OCRResult.Success())
+                }
+            } catch (e: ClaudeOCRService.InvalidApiKeyException) {
+                withContext(Dispatchers.Main) {
+                    onResult(OCRResult.Error("Invalid API key", isApiKeyError = true))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    onResult(OCRResult.Error(e.message ?: "Failed to extract text"))
+                }
+            }
+        }
+    }
+
+    /**
+     * Replace/re-capture a page with Claude OCR
+     */
+    fun replacePage(pageId: Long, imageUri: Uri, onResult: (OCRResult) -> Unit) {
+        val apiKey = apiKeyManager.getApiKey()
+        if (apiKey.isNullOrBlank()) {
+            onResult(OCRResult.Error("API key not configured", isApiKeyError = true))
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val ocrResult = withContext(Dispatchers.IO) {
+                    claudeOCR.extractSentences(imageUri, apiKey)
+                }
+
+                repository.updatePageWithSentences(
+                    pageId = pageId,
+                    imagePath = imageUri.toString(),
+                    sentences = ocrResult.sentences
+                )
+
+                withContext(Dispatchers.Main) {
+                    onResult(OCRResult.Success())
+                }
+            } catch (e: ClaudeOCRService.InvalidApiKeyException) {
+                withContext(Dispatchers.Main) {
+                    onResult(OCRResult.Error("Invalid API key", isApiKeyError = true))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    onResult(OCRResult.Error(e.message ?: "Failed to extract text"))
+                }
+            }
+        }
+    }
+
+    /**
+     * Delete a page
+     */
+    fun deletePage(pageId: Long, onResult: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.deletePage(pageId)
+                withContext(Dispatchers.Main) {
+                    onResult()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
