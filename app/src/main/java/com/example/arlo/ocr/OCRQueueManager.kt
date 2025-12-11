@@ -6,7 +6,10 @@ import android.util.Log
 import com.example.arlo.ApiKeyManager
 import com.example.arlo.data.BookDao
 import com.example.arlo.data.Page
+import com.example.arlo.data.SentenceData
 import com.example.arlo.ml.ClaudeOCRService
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +35,7 @@ class OCRQueueManager(
     private val apiKeyManager: ApiKeyManager
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val gson = Gson()
 
     private val _queueState = MutableStateFlow<QueueState>(QueueState.Idle)
     val queueState: StateFlow<QueueState> = _queueState.asStateFlow()
@@ -44,6 +48,7 @@ class OCRQueueManager(
         object Idle : QueueState()
         data class Processing(val pageId: Long, val bookId: Long) : QueueState()
         data class Error(val pageId: Long, val message: String) : QueueState()
+        data class MissingPages(val bookId: Long, val expectedPageNum: Int, val detectedPageNum: Int) : QueueState()
     }
 
     init {
@@ -115,23 +120,75 @@ class OCRQueueManager(
             val imageUri = Uri.fromFile(File(page.imagePath))
             val result = claudeOCR.extractSentences(imageUri, apiKey)
 
-            // Build sentences JSON
-            val sentencesJson = result.sentences.let { sentences ->
-                val gson = com.google.gson.Gson()
-                gson.toJson(sentences)
+            // Work with mutable list for potential merging
+            val sentences = result.sentences.toMutableList()
+
+            // Handle sentence continuation from previous page
+            if (page.pageNumber > 1 && sentences.isNotEmpty()) {
+                val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
+                if (prevPage != null &&
+                    prevPage.processingStatus == "COMPLETED" &&
+                    !prevPage.lastSentenceComplete) {
+
+                    val prevSentences = parseSentences(prevPage.sentencesJson)
+                    if (prevSentences.isNotEmpty()) {
+                        val lastPrev = prevSentences.last()
+                        val firstNew = sentences.first()
+
+                        // Merge: prepend previous fragment to first new sentence
+                        Log.d(TAG, "Merging sentences: '${lastPrev.text}' + '${firstNew.text}'")
+                        sentences[0] = SentenceData(
+                            text = "${lastPrev.text} ${firstNew.text}".trim(),
+                            isComplete = firstNew.isComplete
+                        )
+
+                        // Remove fragment from previous page
+                        val updatedPrevSentences = prevSentences.dropLast(1)
+                        val prevFullText = updatedPrevSentences.joinToString(" ") { it.text }
+                        val prevLastComplete = updatedPrevSentences.lastOrNull()?.isComplete ?: true
+
+                        bookDao.updatePageFull(
+                            prevPage.id,
+                            prevFullText,
+                            prevPage.imagePath,
+                            toJson(updatedPrevSentences),
+                            prevLastComplete
+                        )
+                        Log.d(TAG, "Updated previous page ${prevPage.id}, removed fragment")
+                    }
+                }
             }
 
-            val lastComplete = result.sentences.lastOrNull()?.isComplete ?: true
+            // Build final JSON and text
+            val sentencesJson = toJson(sentences)
+            val fullText = sentences.joinToString(" ") { it.text }
+            val lastComplete = sentences.lastOrNull()?.isComplete ?: true
+            val detectedPageNumber = result.detectedPageNumber
 
             // Update page with OCR result
             bookDao.updatePageWithOCRResult(
                 pageId = page.id,
-                text = result.fullText,
+                text = fullText,
                 json = sentencesJson,
-                complete = lastComplete
+                complete = lastComplete,
+                detectedPageNum = detectedPageNumber
             )
 
-            Log.d(TAG, "Successfully processed page ${page.id}: ${result.sentences.size} sentences")
+            Log.d(TAG, "Successfully processed page ${page.id}: ${sentences.size} sentences, detected page number: $detectedPageNumber")
+
+            // Check for missing pages based on detected page numbers
+            if (detectedPageNumber != null && page.pageNumber > 1) {
+                val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
+                val prevDetected = prevPage?.detectedPageNumber
+                if (prevDetected != null && detectedPageNumber > prevDetected + 1) {
+                    Log.w(TAG, "Missing pages detected: expected ${prevDetected + 1}, got $detectedPageNumber")
+                    _queueState.value = QueueState.MissingPages(
+                        bookId = page.bookId,
+                        expectedPageNum = prevDetected + 1,
+                        detectedPageNum = detectedPageNumber
+                    )
+                }
+            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Error processing page ${page.id}", e)
@@ -166,6 +223,22 @@ class OCRQueueManager(
             )
             _queueState.value = QueueState.Error(page.id, error.message ?: "Unknown error")
         }
+    }
+
+    // JSON helper methods for sentence parsing
+    private fun parseSentences(json: String?): List<SentenceData> {
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val type = object : TypeToken<List<SentenceData>>() {}.type
+            gson.fromJson(json, type)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse sentences JSON", e)
+            emptyList()
+        }
+    }
+
+    private fun toJson(sentences: List<SentenceData>): String {
+        return gson.toJson(sentences)
     }
 
     companion object {

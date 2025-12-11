@@ -88,8 +88,11 @@ interface BookDao {
     @Query("UPDATE pages SET processingStatus = :status, retryCount = :retryCount, errorMessage = :error WHERE id = :pageId")
     suspend fun updateProcessingStatusWithRetry(pageId: Long, status: String, retryCount: Int, error: String? = null)
 
-    @Query("UPDATE pages SET text = :text, sentencesJson = :json, lastSentenceComplete = :complete, processingStatus = 'COMPLETED' WHERE id = :pageId")
-    suspend fun updatePageWithOCRResult(pageId: Long, text: String, json: String, complete: Boolean)
+    @Query("UPDATE pages SET text = :text, sentencesJson = :json, lastSentenceComplete = :complete, detectedPageNumber = :detectedPageNum, processingStatus = 'COMPLETED' WHERE id = :pageId")
+    suspend fun updatePageWithOCRResult(pageId: Long, text: String, json: String, complete: Boolean, detectedPageNum: Int? = null)
+
+    @Query("UPDATE pages SET pageNumber = :pageNumber WHERE id = :pageId")
+    suspend fun updatePageNumber(pageId: Long, pageNumber: Int)
 
     // Get completed pages only for reader
     @Query("SELECT * FROM pages WHERE bookId = :bookId AND processingStatus = 'COMPLETED' ORDER BY pageNumber ASC")

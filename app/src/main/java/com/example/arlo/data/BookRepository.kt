@@ -214,6 +214,30 @@ class BookRepository(private val bookDao: BookDao) {
         return bookDao.insertPage(page)
     }
 
+    /**
+     * Reorder pages based on detected page numbers from OCR.
+     * Pages without detected numbers keep their relative position at the end.
+     */
+    suspend fun reorderByDetectedPageNumber(bookId: Long) {
+        val pages = bookDao.getPagesForBookSync(bookId)
+
+        // Separate pages with and without detected numbers
+        val withNumbers = pages.filter { it.detectedPageNumber != null }
+            .sortedBy { it.detectedPageNumber }
+        val withoutNumbers = pages.filter { it.detectedPageNumber == null }
+
+        // Combine: numbered pages first, then unnumbered in original order
+        val sorted = withNumbers + withoutNumbers
+
+        // Update page numbers
+        sorted.forEachIndexed { index, page ->
+            val newPageNumber = index + 1
+            if (page.pageNumber != newPageNumber) {
+                bookDao.updatePageNumber(page.id, newPageNumber)
+            }
+        }
+    }
+
     // JSON helpers
     private fun toJson(sentences: List<SentenceData>): String {
         return gson.toJson(sentences)

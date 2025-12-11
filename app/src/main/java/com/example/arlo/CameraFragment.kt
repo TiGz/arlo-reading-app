@@ -178,6 +178,20 @@ class CameraFragment : Fragment() {
                 }
             }
         }
+
+        // Observe queue state for missing page warnings
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                ocrQueueManager.queueState.collect { state ->
+                    if (state is OCRQueueManager.QueueState.MissingPages) {
+                        val message = "Missing page(s) detected!\n" +
+                            "Expected page ${state.expectedPageNum}, but found page ${state.detectedPageNum}.\n" +
+                            "You may have skipped a page."
+                        Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
     }
 
     private fun updateUIForStep() {

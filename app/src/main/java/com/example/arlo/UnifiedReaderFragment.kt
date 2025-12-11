@@ -290,11 +290,11 @@ class UnifiedReaderFragment : Fragment() {
                     var hasHighlight = false
 
                     // In collaborative mode, highlight the target words when it's user's turn
-                    // Show green when LISTENING or IDLE with targetWord, red on failure
+                    // Show green when LISTENING (ready for user input), red/green on FEEDBACK
+                    // Don't show during IDLE (TTS still playing) even if targetWord is set
                     val showCollaborativeHighlight = state.collaborativeMode && (
                         state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING ||
-                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK ||
-                        (state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.IDLE && state.targetWord != null)
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK
                     )
                     if (showCollaborativeHighlight && state.targetWord != null) {
                         // Find where the target words appear in the display text

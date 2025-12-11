@@ -32,12 +32,21 @@ import java.util.Locale
  */
 class UnifiedReaderViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        private const val TAG = "SpeechRecognition"
+        // Delay between TTS completion and starting speech recognition
+        // Reduced from 300ms - modern devices handle audio switching quickly
+        private const val RECOGNITION_START_DELAY_MS = 100L
+    }
+
     private val repository = (application as ArloApplication).repository
     val ttsService = (application as ArloApplication).ttsService
     private val ttsPreferences = TTSPreferences(application)
 
     // Speech recognition (inline per reviewer feedback - no separate service)
+    // Pre-warmed recognizer - created once and reused to reduce startup latency
     private var speechRecognizer: SpeechRecognizer? = null
+    private var isRecognizerWarm = false
     private val isSpeechAvailable: Boolean
     val speechDiagnostics: String
 
@@ -615,8 +624,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             return
         }
 
+        // Pre-warm the recognizer while TTS is playing to reduce startup latency
+        ensureRecognizerWarm()
+
         val (targetWords, range) = extractTargetWords(sentence.text)
-        Log.d("SpeechRecognition", "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
+        Log.d(TAG, "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
 
         // Store target words locally AND in state (local copy avoids race conditions)
         currentTargetWords = targetWords
@@ -656,55 +668,69 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      * Starts listening for user's speech.
      */
     private fun onPartialTTSComplete(targetWords: String) {
-        Log.d("SpeechRecognition", "onPartialTTSComplete: targetWords='$targetWords'")
+        Log.d(TAG, "onPartialTTSComplete: targetWords='$targetWords'")
         // Re-set targetWord in state in case it was lost to race conditions
         _state.value = _state.value.copy(targetWord = targetWords)
         viewModelScope.launch {
-            // Small delay for audio buffer to clear
-            delay(300)
-            Log.d("SpeechRecognition", "After delay, before startSpeechRecognition: targetWord='${_state.value.targetWord}'")
+            // Small delay for audio buffer to clear (reduced from 300ms)
+            delay(RECOGNITION_START_DELAY_MS)
+            Log.d(TAG, "After ${RECOGNITION_START_DELAY_MS}ms delay, starting recognition for: '${_state.value.targetWord}'")
             startSpeechRecognition()
         }
     }
 
     /**
-     * Initialize and start speech recognition.
+     * Pre-warm the SpeechRecognizer so it's ready to start listening faster.
+     * Call this when TTS starts playing in collaborative mode.
      */
-    fun startSpeechRecognition() {
+    private fun ensureRecognizerWarm() {
+        if (speechRecognizer != null && isRecognizerWarm) {
+            Log.d(TAG, "Recognizer already warm")
+            return
+        }
+
         if (!isSpeechAvailable) {
-            handleSpeechError("Speech recognition not available")
+            Log.w(TAG, "Speech recognition not available, cannot pre-warm")
             return
         }
 
         val context = getApplication<Application>()
 
-        // Create recognizer if needed - explicitly use Google's speech recognizer on Fire tablets
-        // to avoid SecurityException when Fire OS tries to bind to Amazon's Alexa service
-        if (speechRecognizer == null) {
-            speechRecognizer = try {
-                // Try Google's speech recognizer first (required for Fire tablets with sideloaded Google app)
-                val googleComponent = ComponentName(
-                    "com.google.android.googlequicksearchbox",
-                    "com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
-                )
-                SpeechRecognizer.createSpeechRecognizer(context, googleComponent)
-            } catch (e: Exception) {
-                Log.w("SpeechRecognition", "Failed to create Google recognizer, falling back to default: ${e.message}")
-                // Fall back to default (may not work on Fire tablets)
-                SpeechRecognizer.createSpeechRecognizer(context)
-            }
+        // Destroy existing recognizer if it exists but isn't warm
+        speechRecognizer?.destroy()
+
+        // Create recognizer - explicitly use Google's speech recognizer on Fire tablets
+        speechRecognizer = try {
+            val googleComponent = ComponentName(
+                "com.google.android.googlequicksearchbox",
+                "com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
+            )
+            SpeechRecognizer.createSpeechRecognizer(context, googleComponent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to create Google recognizer, falling back to default: ${e.message}")
+            SpeechRecognizer.createSpeechRecognizer(context)
         }
 
-        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+        // Set listener now so it's ready when we call startListening
+        speechRecognizer?.setRecognitionListener(createRecognitionListener())
+        isRecognizerWarm = true
+        Log.d(TAG, "Recognizer pre-warmed and ready")
+    }
+
+    /**
+     * Create the RecognitionListener used for all speech recognition.
+     */
+    private fun createRecognitionListener(): RecognitionListener {
+        return object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                Log.d("SpeechRecognition", "onReadyForSpeech")
+                Log.d(TAG, "onReadyForSpeech - recognizer ready to hear speech")
                 _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING)
             }
 
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?: emptyList()
-                Log.d("SpeechRecognition", "onResults: $matches")
+                Log.d(TAG, "onResults: $matches")
                 handleSpeechResults(matches)
             }
 
@@ -721,12 +747,17 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "ERROR_SPEECH_TIMEOUT"
                     else -> "UNKNOWN($error)"
                 }
-                Log.e("SpeechRecognition", "onError: $errorName")
+                Log.e(TAG, "onError: $errorName")
 
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH,
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
                         // Count as failed attempt
+                        handleSpeechResults(emptyList())
+                    }
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        // Recognizer busy - count as failed attempt and retry
+                        Log.w(TAG, "Recognizer busy")
                         handleSpeechResults(emptyList())
                     }
                     else -> {
@@ -736,47 +767,53 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 }
             }
 
-            // Required but unused callbacks
             override fun onBeginningOfSpeech() {
-                Log.d("SpeechRecognition", "onBeginningOfSpeech")
+                Log.d(TAG, "onBeginningOfSpeech - user started speaking")
             }
+
             override fun onEndOfSpeech() {
-                Log.d("SpeechRecognition", "onEndOfSpeech")
+                Log.d(TAG, "onEndOfSpeech - user stopped speaking")
             }
+
             override fun onRmsChanged(rmsdB: Float) {
                 // Convert RMS dB to 0-100 level for UI
                 // RMS typically ranges from -2 to 10 dB
                 val level = ((rmsdB + 2) / 12 * 100).toInt().coerceIn(0, 100)
                 _state.value = _state.value.copy(micLevel = level)
             }
+
             override fun onBufferReceived(buffer: ByteArray?) {
-                Log.d("SpeechRecognition", "onBufferReceived: ${buffer?.size} bytes")
+                // Not used but required by interface
             }
+
             override fun onPartialResults(partialResults: Bundle?) {
                 val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?: emptyList()
-                Log.d("SpeechRecognition", "onPartialResults: $partial")
+                Log.d(TAG, "onPartialResults: $partial")
 
                 // Check partial results for short words - they often don't make it to final results
                 if (partial.isNotEmpty()) {
                     val targetWord = _state.value.targetWord
                     if (targetWord != null && isWordMatch(partial, targetWord)) {
                         // Found a match in partial results - accept it immediately
-                        Log.d("SpeechRecognition", "Partial match found for '$targetWord' in: $partial")
+                        Log.d(TAG, "Partial match found for '$targetWord' in: $partial")
                         speechRecognizer?.cancel()  // Stop listening
                         handleSpeechResults(partial)
                     }
                 }
             }
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
 
-        // Create recognition intent
-        // Note: Short words like "it" require minimal timing constraints
-        val targetWord = _state.value.targetWord ?: ""
-        Log.d("SpeechRecognition", "Starting recognition for target word: '$targetWord'")
+            override fun onEvent(eventType: Int, params: Bundle?) {
+                // Not used but required by interface
+            }
+        }
+    }
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    /**
+     * Create the recognition intent with optimized settings.
+     */
+    private fun createRecognitionIntent(): Intent {
+        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)  // More results to find matches
@@ -785,18 +822,46 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)  // Slightly longer to capture full word
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
         }
+    }
+
+    /**
+     * Initialize and start speech recognition.
+     * Uses pre-warmed recognizer if available for faster startup.
+     */
+    fun startSpeechRecognition() {
+        if (!isSpeechAvailable) {
+            handleSpeechError("Speech recognition not available")
+            return
+        }
+
+        // Ensure recognizer is warm (creates if needed, reuses if already warm)
+        ensureRecognizerWarm()
+
+        val recognizer = speechRecognizer
+        if (recognizer == null) {
+            Log.e(TAG, "Failed to create speech recognizer")
+            handleSpeechError("Speech recognition unavailable")
+            return
+        }
+
+        val targetWord = _state.value.targetWord ?: ""
+        Log.d(TAG, "Starting recognition for target word: '$targetWord'")
+
+        // Set a fresh listener before each startListening call
+        recognizer.setRecognitionListener(createRecognitionListener())
 
         _state.value = _state.value.copy(collaborativeState = CollaborativeState.LISTENING, micLevel = 0)
 
-        Log.d("SpeechRecognition", "About to call startListening...")
         try {
-            speechRecognizer?.startListening(intent)
-            Log.d("SpeechRecognition", "startListening called successfully")
+            recognizer.startListening(createRecognitionIntent())
+            Log.d(TAG, "startListening called successfully")
         } catch (e: SecurityException) {
-            Log.e("SpeechRecognition", "SecurityException starting listening: ${e.message}")
+            Log.e(TAG, "SecurityException starting listening: ${e.message}")
+            isRecognizerWarm = false
             handleSpeechError("Cannot access speech recognition service")
         } catch (e: Exception) {
-            Log.e("SpeechRecognition", "Exception starting listening: ${e.message}")
+            Log.e(TAG, "Exception starting listening: ${e.message}")
+            isRecognizerWarm = false
             handleSpeechError("Speech recognition failed to start")
         }
     }
@@ -894,9 +959,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Cancel any active speech recognition.
+     * Note: This cancels but doesn't destroy the recognizer to keep it warm for reuse.
      */
     fun cancelSpeechRecognition() {
-        speechRecognizer?.cancel()
+        speechRecognizer?.cancel()  // Cancel but keep warm for faster restart
         _state.value = _state.value.copy(collaborativeState = CollaborativeState.IDLE)
     }
 
@@ -913,6 +979,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         ttsService.stop()
         speechRecognizer?.destroy()
         speechRecognizer = null
+        isRecognizerWarm = false
         soundPool?.release()
         soundPool = null
     }

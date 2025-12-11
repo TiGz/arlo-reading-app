@@ -34,7 +34,8 @@ class ClaudeOCRService(private val context: Context) {
 
     data class OCRResult(
         val sentences: List<SentenceData>,
-        val fullText: String
+        val fullText: String,
+        val detectedPageNumber: Int? = null
     )
 
     /**
@@ -222,6 +223,11 @@ class ClaudeOCRService(private val context: Context) {
         val jsonStr = match.value
         val json = JsonParser.parseString(jsonStr).asJsonObject
 
+        // Extract page number if present
+        val pageNumber = json.get("pageNumber")?.let { element ->
+            if (!element.isJsonNull) element.asInt else null
+        }
+
         val sentencesArray = json.getAsJsonArray("sentences")
         val sentences = sentencesArray.map { element ->
             val obj = element.asJsonObject
@@ -232,7 +238,7 @@ class ClaudeOCRService(private val context: Context) {
         }
 
         val fullText = sentences.joinToString(" ") { it.text }
-        return OCRResult(sentences, fullText)
+        return OCRResult(sentences, fullText, pageNumber)
     }
 
     private fun parseTextAsSentences(text: String): OCRResult {
@@ -264,6 +270,7 @@ class ClaudeOCRService(private val context: Context) {
         private val OCR_PROMPT = """
 Extract all text from this book page image. Return a JSON object with this exact format:
 {
+  "pageNumber": 42,
   "sentences": [
     {"text": "First sentence.", "isComplete": true},
     {"text": "Second sentence.", "isComplete": true},
@@ -272,6 +279,7 @@ Extract all text from this book page image. Return a JSON object with this exact
 }
 
 Rules:
+- pageNumber: The printed page number if visible anywhere on the page (top, bottom, corners), or null if not found. Do NOT include chapter numbers.
 - Split text into sentences ending with . ! or ?
 - IGNORE periods in abbreviations (Dr., Mr., Mrs., U.S., etc., e.g., i.e.)
 - IGNORE periods in numbers ($4.99, 3.14)
