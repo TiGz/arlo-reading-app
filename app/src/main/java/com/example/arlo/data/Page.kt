@@ -26,6 +26,7 @@ data class Page(
     val sentencesJson: String? = null,       // JSON array of SentenceData
     val lastSentenceComplete: Boolean = true,  // For sentence continuation logic
     val detectedPageNumber: Int? = null,      // Page number extracted from OCR (if visible)
+    val confidence: Float = 1.0f,            // OCR confidence score (0.0-1.0)
     // Queue management
     val processingStatus: String = "COMPLETED",  // PENDING, PROCESSING, COMPLETED, FAILED
     val errorMessage: String? = null,

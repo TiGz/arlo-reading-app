@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <!-- Page number badge -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:id="@+id/tvPageNumber"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    android:fontFamily="serif"
+                    tools:text="Page 42" />
+
+                <View
+                    android:layout_width="8dp"
+                    android:layout_height="4dp"
+                    android:layout_marginHorizontal="12dp"
+                    android:background="@color/text_hint" />
+
+                <!-- Confidence indicator -->
+                <ImageView
+                    android:id="@+id/ivConfidenceIcon"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginEnd="4dp"
+                    android:src="@drawable/ic_check"
+                    app:tint="@color/success_green"
+                    tools:ignore="ContentDescription" />
+
+                <TextView
+                    android:id="@+id/tvConfidenceScore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    tools:text="92% quality" />
+
+            </LinearLayout>
+
+            <!-- Full page text -->
+            <TextView
+                android:id="@+id/tvFullText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="18sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="serif"
+                android:lineSpacingMultiplier="1.5"
+                tools:text="This is sample text from a children's book. It shows what the OCR has extracted from the page image. The text should be easy to read and review for any errors." />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <!-- Processing overlay -->
+    <FrameLayout
+        android:id="@+id/processingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#E0FAF6F0"
+        android:visibility="gone"
+        tools:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ProgressBar
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:indeterminateTint="@color/primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Processing..."
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <!-- Error indicator -->
+    <LinearLayout
+        android:id="@+id/errorIndicator"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:visibility="gone"
+        tools:visibility="gone">
+
+        <ImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_warning"
+            app:tint="@color/error_red"
+            android:contentDescription="Error" />
+
+        <TextView
+            android:id="@+id/tvErrorMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Processing failed"
+            android:textColor="@color/error_red"
+            android:textSize="16sp" />
+
+    </LinearLayout>
+
+</FrameLayout>

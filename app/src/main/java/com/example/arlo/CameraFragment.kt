@@ -11,6 +11,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -53,6 +54,9 @@ class CameraFragment : Fragment() {
     private var previewImagePath: String? = null
     private var previewPageNumber: Int = 0
 
+    // Expected next page number (from OCR detection)
+    private var expectedNextPage: Int? = null
+
     // OCR Queue
     private val ocrQueueManager: OCRQueueManager by lazy {
         (requireActivity().application as ArloApplication).ocrQueueManager
@@ -78,16 +82,29 @@ class CameraFragment : Fragment() {
     private var mode: String = MODE_NEW_BOOK
     private var bookId: Long = -1L
 
+    // Recapture mode fields
+    private var pageIdToReplace: Long = -1L
+    private var recaptureExpectedPageNumber: Int = -1
+    private var returnToPosition: Int = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         arguments?.let {
             mode = it.getString(ARG_MODE, MODE_NEW_BOOK)
             bookId = it.getLong(ARG_BOOK_ID, -1L)
+            pageIdToReplace = it.getLong(ARG_PAGE_ID_TO_REPLACE, -1L)
+            recaptureExpectedPageNumber = it.getInt(ARG_EXPECTED_PAGE_NUMBER, -1)
+            returnToPosition = it.getInt(ARG_RETURN_TO_POSITION, 0)
         }
 
         // Set initial capture step based on mode
         captureStep = if (mode == MODE_NEW_BOOK) CaptureStep.COVER else CaptureStep.PAGE
         currentBookId = bookId
+
+        // For recapture mode, set the expected page number
+        if (mode == MODE_RECAPTURE && recaptureExpectedPageNumber > 0) {
+            expectedNextPage = recaptureExpectedPageNumber
+        }
     }
 
     override fun onCreateView(
@@ -156,8 +173,38 @@ class CameraFragment : Fragment() {
             onProcessWithAIClicked()
         }
 
+        // Review Pages button
+        binding.btnReviewPages.setOnClickListener {
+            navigateToPageReview()
+        }
+
+        // Update review button visibility
+        updateReviewButtonVisibility()
+
         // Observe queue status
         observeQueueStatus()
+    }
+
+    private fun updateReviewButtonVisibility() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            if (currentBookId != -1L && captureStep == CaptureStep.PAGE && mode != MODE_RECAPTURE) {
+                val pageCount = (requireActivity().application as ArloApplication)
+                    .repository.getPageCount(currentBookId)
+                binding.btnReviewPages.visibility = if (pageCount > 0) View.VISIBLE else View.GONE
+            } else {
+                binding.btnReviewPages.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun navigateToPageReview() {
+        if (currentBookId == -1L) return
+
+        val fragment = PageReviewFragment.newInstance(currentBookId)
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     private fun observeQueueStatus() {
@@ -179,22 +226,73 @@ class CameraFragment : Fragment() {
             }
         }
 
-        // Observe queue state for missing page warnings
+        // Observe queue state for feedback
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 ocrQueueManager.queueState.collect { state ->
-                    if (state is OCRQueueManager.QueueState.MissingPages) {
-                        val message = "Missing page(s) detected!\n" +
-                            "Expected page ${state.expectedPageNum}, but found page ${state.detectedPageNum}.\n" +
-                            "You may have skipped a page."
-                        Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+                    when (state) {
+                        is OCRQueueManager.QueueState.MissingPages -> {
+                            val message = "Missing page(s) detected!\n" +
+                                "Expected page ${state.expectedPageNum}, but found page ${state.detectedPageNum}.\n" +
+                                "You may have skipped a page."
+                            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+                        }
+                        is OCRQueueManager.QueueState.LowConfidence -> {
+                            showLowConfidenceWarning(state)
+                        }
+                        is OCRQueueManager.QueueState.PagesProcessed -> {
+                            handlePagesProcessed(state)
+                        }
+                        else -> {}
                     }
                 }
             }
         }
     }
 
+    private fun handlePagesProcessed(state: OCRQueueManager.QueueState.PagesProcessed) {
+        // Update expected next page for UI
+        expectedNextPage = state.nextExpectedPage
+
+        // Show feedback toast
+        val pageList = state.pageNumbers.mapNotNull { it }.joinToString(", ")
+        val message = when {
+            pageList.isEmpty() -> "Page captured"
+            state.pageNumbers.size == 1 -> "Captured page $pageList"
+            else -> "Captured pages $pageList"
+        }
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+
+        // Update instruction if we're still on PAGE step
+        if (captureStep == CaptureStep.PAGE) {
+            updateUIForStep()
+        }
+    }
+
+    private fun showLowConfidenceWarning(state: OCRQueueManager.QueueState.LowConfidence) {
+        val confidencePercent = (state.confidence * 100).toInt()
+        val pageInfo = state.pageNumber?.let { "Page $it" } ?: "This page"
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Low Quality Capture")
+            .setMessage(
+                "$pageInfo was captured at ${confidencePercent}% quality.\n\n" +
+                "The text may contain errors. Would you like to recapture it?"
+            )
+            .setPositiveButton("Recapture") { _, _ ->
+                // Set expected page to the low-confidence one for recapture
+                expectedNextPage = state.pageNumber
+                updateUIForStep()
+                speakInstruction()
+            }
+            .setNegativeButton("Keep It", null)
+            .show()
+    }
+
     private fun updateUIForStep() {
+        // Clear frozen preview when transitioning between states
+        clearFrozenPreview()
+
         when (captureStep) {
             CaptureStep.COVER -> {
                 binding.previewContainer.visibility = View.GONE
@@ -206,17 +304,48 @@ class CameraFragment : Fragment() {
                 binding.tvInstructionHint.text = "This will be used as your book's thumbnail"
                 binding.btnSkip.visibility = View.GONE
             }
+            CaptureStep.COVER_PREVIEW -> {
+                binding.previewContainer.visibility = View.VISIBLE
+                binding.viewFinder.visibility = View.GONE
+                binding.instructionCard.visibility = View.GONE
+                binding.imageCaptureButton.visibility = View.GONE
+                binding.btnSkip.visibility = View.GONE
+                binding.btnProcessWithAI.text = "Use This Cover"
+                previewImagePath?.let { path ->
+                    binding.ivPreview.load(File(path)) {
+                        crossfade(true)
+                    }
+                }
+            }
             CaptureStep.PAGE -> {
                 binding.previewContainer.visibility = View.GONE
                 binding.viewFinder.visibility = View.VISIBLE
                 binding.instructionCard.visibility = View.VISIBLE
                 binding.imageCaptureButton.visibility = View.VISIBLE
-                val pageNum = if (mode == MODE_ADD_PAGES) "next" else "first"
-                binding.tvInstructionTitle.text = if (mode == MODE_NEW_BOOK) "Step 2" else "Add Page"
-                binding.tvInstruction.text = "Take a photo of the $pageNum page"
+                binding.btnProcessWithAI.text = "Process with AI"
+
+                // Show expected page number if known
+                val pageInstruction = when {
+                    mode == MODE_RECAPTURE && expectedNextPage != null -> "Recapture page $expectedNextPage"
+                    expectedNextPage != null -> "Capture page $expectedNextPage"
+                    mode == MODE_NEW_BOOK -> "Capture the first page"
+                    else -> "Capture the next page"
+                }
+
+                binding.tvInstructionTitle.text = when {
+                    mode == MODE_RECAPTURE -> "Recapture"
+                    mode == MODE_NEW_BOOK && expectedNextPage == null -> "Step 2"
+                    else -> "Add Page"
+                }
+                binding.tvInstruction.text = pageInstruction
                 binding.tvInstructionHint.text = "Position the page clearly in the frame"
-                binding.btnSkip.visibility = View.VISIBLE
+
+                // Hide skip/done button in recapture mode, show otherwise
+                binding.btnSkip.visibility = if (mode == MODE_RECAPTURE) View.GONE else View.VISIBLE
                 binding.btnSkip.text = "Done"
+
+                // Update review button visibility
+                updateReviewButtonVisibility()
             }
             CaptureStep.PREVIEW -> {
                 binding.previewContainer.visibility = View.VISIBLE
@@ -224,7 +353,7 @@ class CameraFragment : Fragment() {
                 binding.instructionCard.visibility = View.GONE
                 binding.imageCaptureButton.visibility = View.GONE
                 binding.btnSkip.visibility = View.GONE
-                // Load the preview image
+                binding.btnProcessWithAI.text = "Process with AI"
                 previewImagePath?.let { path ->
                     binding.ivPreview.load(File(path)) {
                         crossfade(true)
@@ -271,7 +400,13 @@ class CameraFragment : Fragment() {
         binding.imageCaptureButton.isEnabled = true
     }
 
+    private fun clearFrozenPreview() {
+        binding.ivFrozenPreview.visibility = View.GONE
+        binding.ivFrozenPreview.setImageBitmap(null)
+    }
+
     private fun handleOCRError(result: CameraViewModel.OCRResult.Error) {
+        clearFrozenPreview()
         hideLoading()
 
         if (result.isApiKeyError) {
@@ -287,6 +422,12 @@ class CameraFragment : Fragment() {
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
 
+        // Freeze the preview immediately so user sees what was captured
+        binding.viewFinder.bitmap?.let { bitmap ->
+            binding.ivFrozenPreview.setImageBitmap(bitmap)
+            binding.ivFrozenPreview.visibility = View.VISIBLE
+        }
+
         val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US)
             .format(System.currentTimeMillis())
 
@@ -301,6 +442,7 @@ class CameraFragment : Fragment() {
             object : ImageCapture.OnImageSavedCallback {
                 override fun onError(exc: ImageCaptureException) {
                     Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
+                    clearFrozenPreview()
                     hideLoading()
                     Toast.makeText(requireContext(), "Capture failed", Toast.LENGTH_SHORT).show()
                 }
@@ -314,19 +456,31 @@ class CameraFragment : Fragment() {
     }
 
     private fun processCapture(photoFile: File) {
-        val uri = Uri.fromFile(photoFile)
-
         when (captureStep) {
-            CaptureStep.COVER -> processCoverCapture(photoFile, uri)
+            CaptureStep.COVER -> processCoverCapture(photoFile)
+            CaptureStep.COVER_PREVIEW -> { /* Do nothing - already in preview */ }
             CaptureStep.PAGE -> processPageCapture(photoFile)
             CaptureStep.PREVIEW -> { /* Do nothing - already in preview */ }
         }
     }
 
-    private fun processCoverCapture(photoFile: File, uri: Uri) {
+    private fun processCoverCapture(photoFile: File) {
+        hideLoading()
+        previewImagePath = photoFile.absolutePath
+        captureStep = CaptureStep.COVER_PREVIEW
+        updateUIForStep()
+    }
+
+    private fun processConfirmedCover() {
+        val imagePath = previewImagePath ?: return
+        val photoFile = File(imagePath)
+        val uri = Uri.fromFile(photoFile)
+
+        showLoading("Processing cover...")
+
         // Create a smaller thumbnail for the cover
         val thumbnailFile = createThumbnail(photoFile)
-        coverImagePath = thumbnailFile?.absolutePath ?: photoFile.absolutePath
+        coverImagePath = thumbnailFile?.absolutePath ?: imagePath
 
         // Extract title from cover using Claude OCR
         viewModel.extractTitleFromCover(uri) { extractedTitle, result ->
@@ -344,6 +498,7 @@ class CameraFragment : Fragment() {
 
                     viewModel.createBookWithCover(title, coverImagePath!!) { newBookId ->
                         currentBookId = newBookId
+                        previewImagePath = null
 
                         // Move to page capture
                         captureStep = CaptureStep.PAGE
@@ -388,31 +543,54 @@ class CameraFragment : Fragment() {
         previewImagePath = null
         previewPageNumber = 0
 
-        // Return to camera
-        captureStep = CaptureStep.PAGE
+        // Return to appropriate camera step
+        captureStep = if (captureStep == CaptureStep.COVER_PREVIEW) CaptureStep.COVER else CaptureStep.PAGE
         updateUIForStep()
     }
 
     private fun onProcessWithAIClicked() {
+        // Handle cover confirmation
+        if (captureStep == CaptureStep.COVER_PREVIEW) {
+            processConfirmedCover()
+            return
+        }
+
         val imagePath = previewImagePath ?: return
         val pageNumber = previewPageNumber
 
         // Queue page for background processing
         viewLifecycleOwner.lifecycleScope.launch {
-            ocrQueueManager.queuePage(currentBookId, imagePath, pageNumber)
-            Toast.makeText(requireContext(), "Page queued for processing", Toast.LENGTH_SHORT).show()
+            if (mode == MODE_RECAPTURE && pageIdToReplace != -1L) {
+                // Recapture mode - replace existing page
+                ocrQueueManager.queueRecapture(pageIdToReplace, imagePath)
+                Toast.makeText(requireContext(), "Page queued for reprocessing", Toast.LENGTH_SHORT).show()
 
-            // Clear preview state
-            previewImagePath = null
-            previewPageNumber = 0
+                // Clear preview state
+                previewImagePath = null
+                previewPageNumber = 0
 
-            // Return to camera for next page
-            captureStep = CaptureStep.PAGE
-            updateUIForStep()
+                // Return to page review
+                val fragment = PageReviewFragment.newInstance(currentBookId, returnToPosition)
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.container, fragment)
+                    .commit()
+            } else {
+                // Normal mode - add new page
+                ocrQueueManager.queuePage(currentBookId, imagePath, pageNumber)
+                Toast.makeText(requireContext(), "Page queued for processing", Toast.LENGTH_SHORT).show()
 
-            // Update instruction for next page
-            binding.tvInstructionTitle.text = "Continue"
-            binding.tvInstruction.text = "Take a photo of the next page"
+                // Clear preview state
+                previewImagePath = null
+                previewPageNumber = 0
+
+                // Return to camera for next page
+                captureStep = CaptureStep.PAGE
+                updateUIForStep()
+
+                // Update instruction for next page
+                binding.tvInstructionTitle.text = "Continue"
+                binding.tvInstruction.text = "Take a photo of the next page"
+            }
         }
     }
 
@@ -451,8 +629,13 @@ class CameraFragment : Fragment() {
 
         const val ARG_MODE = "mode"
         const val ARG_BOOK_ID = "book_id"
+        const val ARG_PAGE_ID_TO_REPLACE = "page_id_to_replace"
+        const val ARG_EXPECTED_PAGE_NUMBER = "expected_page_number"
+        const val ARG_RETURN_TO_POSITION = "return_to_position"
+
         const val MODE_NEW_BOOK = "new_book"
         const val MODE_ADD_PAGES = "add_pages"
+        const val MODE_RECAPTURE = "recapture"
 
         fun newInstance(mode: String, bookId: Long = -1L) =
             CameraFragment().apply {
@@ -461,12 +644,28 @@ class CameraFragment : Fragment() {
                     putLong(ARG_BOOK_ID, bookId)
                 }
             }
+
+        fun newInstanceForRecapture(
+            bookId: Long,
+            pageIdToReplace: Long,
+            expectedPageNumber: Int,
+            returnToPosition: Int = 0
+        ) = CameraFragment().apply {
+            arguments = Bundle().apply {
+                putString(ARG_MODE, MODE_RECAPTURE)
+                putLong(ARG_BOOK_ID, bookId)
+                putLong(ARG_PAGE_ID_TO_REPLACE, pageIdToReplace)
+                putInt(ARG_EXPECTED_PAGE_NUMBER, expectedPageNumber)
+                putInt(ARG_RETURN_TO_POSITION, returnToPosition)
+            }
+        }
     }
 
     enum class CaptureStep {
         COVER,
+        COVER_PREVIEW,  // Show captured cover for confirmation
         PAGE,
-        PREVIEW  // Show captured image before processing
+        PREVIEW  // Show captured page before processing
     }
 
     private fun startCamera() {

@@ -62,19 +62,6 @@ interface BookDao {
     @Query("UPDATE pages SET text = :text, imagePath = :imagePath, sentencesJson = :sentencesJson, lastSentenceComplete = :lastSentenceComplete WHERE id = :pageId")
     suspend fun updatePageFull(pageId: Long, text: String, imagePath: String, sentencesJson: String?, lastSentenceComplete: Boolean)
 
-    // Legacy book detection - books with no pages that have sentencesJson
-    @Query("""
-        SELECT b.* FROM books b
-        WHERE NOT EXISTS (
-            SELECT 1 FROM pages p
-            WHERE p.bookId = b.id AND p.sentencesJson IS NOT NULL
-        )
-    """)
-    suspend fun getBooksWithoutSentences(): List<Book>
-
-    @Query("DELETE FROM books WHERE id IN (:bookIds)")
-    suspend fun deleteBooks(bookIds: List<Long>)
-
     // OCR Queue management
     @Query("SELECT * FROM pages WHERE processingStatus IN ('PENDING', 'PROCESSING') ORDER BY id ASC")
     fun getProcessingPages(): Flow<List<Page>>
@@ -88,8 +75,8 @@ interface BookDao {
     @Query("UPDATE pages SET processingStatus = :status, retryCount = :retryCount, errorMessage = :error WHERE id = :pageId")
     suspend fun updateProcessingStatusWithRetry(pageId: Long, status: String, retryCount: Int, error: String? = null)
 
-    @Query("UPDATE pages SET text = :text, sentencesJson = :json, lastSentenceComplete = :complete, detectedPageNumber = :detectedPageNum, processingStatus = 'COMPLETED' WHERE id = :pageId")
-    suspend fun updatePageWithOCRResult(pageId: Long, text: String, json: String, complete: Boolean, detectedPageNum: Int? = null)
+    @Query("UPDATE pages SET text = :text, sentencesJson = :json, lastSentenceComplete = :complete, detectedPageNumber = :detectedPageNum, confidence = :confidence, processingStatus = 'COMPLETED' WHERE id = :pageId")
+    suspend fun updatePageWithOCRResult(pageId: Long, text: String, json: String, complete: Boolean, detectedPageNum: Int? = null, confidence: Float = 1.0f)
 
     @Query("UPDATE pages SET pageNumber = :pageNumber WHERE id = :pageId")
     suspend fun updatePageNumber(pageId: Long, pageNumber: Int)
@@ -104,4 +91,23 @@ interface BookDao {
     // Get pending count for a book
     @Query("SELECT COUNT(*) FROM pages WHERE bookId = :bookId AND processingStatus IN ('PENDING', 'PROCESSING')")
     fun getPendingPageCount(bookId: Long): Flow<Int>
+
+    // Page recapture support
+    @Query("SELECT * FROM pages WHERE id = :pageId")
+    suspend fun getPageById(pageId: Long): Page?
+
+    @Query("""
+        UPDATE pages SET
+            processingStatus = 'PENDING',
+            text = '',
+            sentencesJson = NULL,
+            confidence = 0.0,
+            retryCount = 0,
+            errorMessage = NULL
+        WHERE id = :pageId
+    """)
+    suspend fun resetPageForRecapture(pageId: Long)
+
+    @Query("UPDATE pages SET imagePath = :imagePath WHERE id = :pageId")
+    suspend fun updatePageImage(pageId: Long, imagePath: String)
 }

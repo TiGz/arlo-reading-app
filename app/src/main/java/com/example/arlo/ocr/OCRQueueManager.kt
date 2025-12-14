@@ -8,6 +8,7 @@ import com.example.arlo.data.BookDao
 import com.example.arlo.data.Page
 import com.example.arlo.data.SentenceData
 import com.example.arlo.ml.ClaudeOCRService
+import com.example.arlo.tts.TTSCacheManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +33,8 @@ class OCRQueueManager(
     private val context: Context,
     private val bookDao: BookDao,
     private val claudeOCR: ClaudeOCRService,
-    private val apiKeyManager: ApiKeyManager
+    private val apiKeyManager: ApiKeyManager,
+    private val ttsCacheManager: TTSCacheManager? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val gson = Gson()
@@ -49,6 +51,19 @@ class OCRQueueManager(
         data class Processing(val pageId: Long, val bookId: Long) : QueueState()
         data class Error(val pageId: Long, val message: String) : QueueState()
         data class MissingPages(val bookId: Long, val expectedPageNum: Int, val detectedPageNum: Int) : QueueState()
+
+        // Feedback states for UI
+        data class LowConfidence(
+            val bookId: Long,
+            val pageNumber: Int?,  // null if first page with no detected number
+            val confidence: Float
+        ) : QueueState()
+
+        data class PagesProcessed(
+            val bookId: Long,
+            val pageNumbers: List<Int?>,  // detected page numbers (may be null)
+            val nextExpectedPage: Int?    // for UI to show "Capture page X next"
+        ) : QueueState()
     }
 
     init {
@@ -120,80 +135,152 @@ class OCRQueueManager(
             val imageUri = Uri.fromFile(File(page.imagePath))
             val result = claudeOCR.extractSentences(imageUri, apiKey)
 
-            // Work with mutable list for potential merging
-            val sentences = result.sentences.toMutableList()
+            val processedPageNumbers = mutableListOf<Int?>()
+            var lowestConfidence = 1.0f
+            var lowestConfidencePage: Int? = null
 
-            // Handle sentence continuation from previous page
-            if (page.pageNumber > 1 && sentences.isNotEmpty()) {
-                val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
-                if (prevPage != null &&
-                    prevPage.processingStatus == "COMPLETED" &&
-                    !prevPage.lastSentenceComplete) {
+            // Process each page in the result
+            result.pages.forEachIndexed { index, pageResult ->
+                val sequentialPageNum = page.pageNumber + index
 
-                    val prevSentences = parseSentences(prevPage.sentencesJson)
-                    if (prevSentences.isNotEmpty()) {
-                        val lastPrev = prevSentences.last()
-                        val firstNew = sentences.first()
-
-                        // Merge: prepend previous fragment to first new sentence
-                        Log.d(TAG, "Merging sentences: '${lastPrev.text}' + '${firstNew.text}'")
-                        sentences[0] = SentenceData(
-                            text = "${lastPrev.text} ${firstNew.text}".trim(),
-                            isComplete = firstNew.isComplete
-                        )
-
-                        // Remove fragment from previous page
-                        val updatedPrevSentences = prevSentences.dropLast(1)
-                        val prevFullText = updatedPrevSentences.joinToString(" ") { it.text }
-                        val prevLastComplete = updatedPrevSentences.lastOrNull()?.isComplete ?: true
-
-                        bookDao.updatePageFull(
-                            prevPage.id,
-                            prevFullText,
-                            prevPage.imagePath,
-                            toJson(updatedPrevSentences),
-                            prevLastComplete
-                        )
-                        Log.d(TAG, "Updated previous page ${prevPage.id}, removed fragment")
-                    }
+                if (index == 0) {
+                    // First page updates the queued page entity
+                    processFirstPageResult(page, pageResult)
+                } else {
+                    // Additional pages create new Page entities
+                    createAdditionalPage(page.bookId, pageResult, sequentialPageNum)
                 }
+
+                processedPageNumbers.add(pageResult.pageNumber)
+
+                // Track lowest confidence
+                if (pageResult.confidence < lowestConfidence) {
+                    lowestConfidence = pageResult.confidence
+                    lowestConfidencePage = pageResult.pageNumber ?: sequentialPageNum
+                }
+
+                // Queue TTS pre-caching for each page
+                ttsCacheManager?.queueSentencesForCaching(
+                    pageResult.sentences.map { it.text },
+                    page.id + index
+                )
             }
 
-            // Build final JSON and text
-            val sentencesJson = toJson(sentences)
-            val fullText = sentences.joinToString(" ") { it.text }
-            val lastComplete = sentences.lastOrNull()?.isComplete ?: true
-            val detectedPageNumber = result.detectedPageNumber
+            Log.d(TAG, "Successfully processed ${result.pages.size} page(s) from capture, pages: $processedPageNumbers")
 
-            // Update page with OCR result
-            bookDao.updatePageWithOCRResult(
-                pageId = page.id,
-                text = fullText,
-                json = sentencesJson,
-                complete = lastComplete,
-                detectedPageNum = detectedPageNumber
+            // Emit low confidence warning if any page below threshold
+            if (lowestConfidence < LOW_CONFIDENCE_THRESHOLD) {
+                _queueState.value = QueueState.LowConfidence(
+                    bookId = page.bookId,
+                    pageNumber = lowestConfidencePage,
+                    confidence = lowestConfidence
+                )
+            }
+
+            // Calculate next expected page number
+            val lastDetectedPage = result.pages.lastOrNull()?.pageNumber
+            val nextExpected = lastDetectedPage?.plus(1)
+
+            // Emit pages processed feedback
+            _queueState.value = QueueState.PagesProcessed(
+                bookId = page.bookId,
+                pageNumbers = processedPageNumbers,
+                nextExpectedPage = nextExpected
             )
-
-            Log.d(TAG, "Successfully processed page ${page.id}: ${sentences.size} sentences, detected page number: $detectedPageNumber")
-
-            // Check for missing pages based on detected page numbers
-            if (detectedPageNumber != null && page.pageNumber > 1) {
-                val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
-                val prevDetected = prevPage?.detectedPageNumber
-                if (prevDetected != null && detectedPageNumber > prevDetected + 1) {
-                    Log.w(TAG, "Missing pages detected: expected ${prevDetected + 1}, got $detectedPageNumber")
-                    _queueState.value = QueueState.MissingPages(
-                        bookId = page.bookId,
-                        expectedPageNum = prevDetected + 1,
-                        detectedPageNum = detectedPageNumber
-                    )
-                }
-            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Error processing page ${page.id}", e)
             handleProcessingError(page, e)
         }
+    }
+
+    private suspend fun processFirstPageResult(page: Page, pageResult: ClaudeOCRService.PageOCRResult) {
+        // Work with mutable list for potential merging
+        val sentences = pageResult.sentences.toMutableList()
+
+        // Handle sentence continuation from previous page
+        if (page.pageNumber > 1 && sentences.isNotEmpty()) {
+            val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
+            if (prevPage != null &&
+                prevPage.processingStatus == "COMPLETED" &&
+                !prevPage.lastSentenceComplete) {
+
+                val prevSentences = parseSentences(prevPage.sentencesJson)
+                if (prevSentences.isNotEmpty()) {
+                    val lastPrev = prevSentences.last()
+                    val firstNew = sentences.first()
+
+                    // Merge: prepend previous fragment to first new sentence
+                    Log.d(TAG, "Merging sentences: '${lastPrev.text}' + '${firstNew.text}'")
+                    sentences[0] = SentenceData(
+                        text = "${lastPrev.text} ${firstNew.text}".trim(),
+                        isComplete = firstNew.isComplete
+                    )
+
+                    // Remove fragment from previous page
+                    val updatedPrevSentences = prevSentences.dropLast(1)
+                    val prevFullText = updatedPrevSentences.joinToString(" ") { it.text }
+                    val prevLastComplete = updatedPrevSentences.lastOrNull()?.isComplete ?: true
+
+                    bookDao.updatePageFull(
+                        prevPage.id,
+                        prevFullText,
+                        prevPage.imagePath,
+                        toJson(updatedPrevSentences),
+                        prevLastComplete
+                    )
+                    Log.d(TAG, "Updated previous page ${prevPage.id}, removed fragment")
+                }
+            }
+        }
+
+        // Build final JSON and text
+        val sentencesJson = toJson(sentences)
+        val fullText = sentences.joinToString(" ") { it.text }
+        val lastComplete = sentences.lastOrNull()?.isComplete ?: true
+        val detectedPageNumber = pageResult.pageNumber
+
+        // Update page with OCR result
+        bookDao.updatePageWithOCRResult(
+            pageId = page.id,
+            text = fullText,
+            json = sentencesJson,
+            complete = lastComplete,
+            detectedPageNum = detectedPageNumber,
+            confidence = pageResult.confidence
+        )
+
+        Log.d(TAG, "Processed first page ${page.id}: ${sentences.size} sentences, detected page number: $detectedPageNumber, confidence: ${pageResult.confidence}")
+
+        // Check for missing pages based on detected page numbers
+        if (detectedPageNumber != null && page.pageNumber > 1) {
+            val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
+            val prevDetected = prevPage?.detectedPageNumber
+            if (prevDetected != null && detectedPageNumber > prevDetected + 1) {
+                Log.w(TAG, "Missing pages detected: expected ${prevDetected + 1}, got $detectedPageNumber")
+                _queueState.value = QueueState.MissingPages(
+                    bookId = page.bookId,
+                    expectedPageNum = prevDetected + 1,
+                    detectedPageNum = detectedPageNumber
+                )
+            }
+        }
+    }
+
+    private suspend fun createAdditionalPage(bookId: Long, pageResult: ClaudeOCRService.PageOCRResult, sequentialNum: Int) {
+        val newPage = Page(
+            bookId = bookId,
+            imagePath = "",  // No separate image for multi-page captures
+            pageNumber = sequentialNum,
+            text = pageResult.fullText,
+            sentencesJson = toJson(pageResult.sentences),
+            lastSentenceComplete = pageResult.sentences.lastOrNull()?.isComplete ?: true,
+            detectedPageNumber = pageResult.pageNumber,
+            confidence = pageResult.confidence,
+            processingStatus = "COMPLETED"
+        )
+        val newPageId = bookDao.insertPage(newPage)
+        Log.d(TAG, "Created additional page $newPageId for book $bookId: sequential=$sequentialNum, detected=${pageResult.pageNumber}, confidence=${pageResult.confidence}")
     }
 
     private suspend fun handleProcessingError(page: Page, error: Exception) {
@@ -241,9 +328,36 @@ class OCRQueueManager(
         return gson.toJson(sentences)
     }
 
+    /**
+     * Prepare a page for recapture by resetting its processing state.
+     */
+    suspend fun prepareForRecapture(pageId: Long) {
+        bookDao.resetPageForRecapture(pageId)
+        Log.d(TAG, "Page $pageId prepared for recapture")
+    }
+
+    /**
+     * Queue a recapture of an existing page with a new image.
+     */
+    suspend fun queueRecapture(pageId: Long, newImagePath: String) {
+        val oldPage = bookDao.getPageById(pageId)
+        if (oldPage != null && oldPage.imagePath.isNotEmpty()) {
+            // Delete old image file
+            File(oldPage.imagePath).delete()
+            Log.d(TAG, "Deleted old image for page $pageId")
+        }
+
+        // Update page with new image path
+        bookDao.updatePageImage(pageId, newImagePath)
+        Log.d(TAG, "Queued recapture for page $pageId with new image")
+
+        startProcessingIfNeeded()
+    }
+
     companion object {
         private const val TAG = "OCRQueueManager"
         private const val MAX_RETRIES = 3
         private const val RETRY_BASE_DELAY_MS = 2000L
+        private const val LOW_CONFIDENCE_THRESHOLD = 0.7f
     }
 }
