@@ -154,15 +154,6 @@ class BookRepository(private val bookDao: BookDao) {
         bookDao.deleteBook(bookId)
     }
 
-    // Legacy book detection and cleanup
-    suspend fun getBooksWithoutSentences(): List<Book> {
-        return bookDao.getBooksWithoutSentences()
-    }
-
-    suspend fun deleteLegacyBooks(bookIds: List<Long>) {
-        bookDao.deleteBooks(bookIds)
-    }
-
     // OCR Queue methods
     fun getProcessingPages(): Flow<List<Page>> {
         return bookDao.getProcessingPages()

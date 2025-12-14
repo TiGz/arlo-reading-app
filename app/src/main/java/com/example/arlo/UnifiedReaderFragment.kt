@@ -15,25 +15,19 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.viewpager2.widget.ViewPager2
 import com.example.arlo.databinding.FragmentUnifiedReaderBinding
-import com.example.arlo.tts.TTSService
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 /**
- * Unified Reader Fragment that supports both:
- * - Full page mode with ViewPager2 and scrollable text
- * - Sentence mode with large font and navigation buttons
- *
- * Both modes use sentencesJson as the data source.
+ * Sentence-by-sentence reader fragment with collaborative reading mode.
+ * Displays one sentence at a time with large fonts (28sp).
  */
 class UnifiedReaderFragment : Fragment() {
 
@@ -80,12 +74,15 @@ class UnifiedReaderFragment : Fragment() {
         viewModel = ViewModelProvider(this)[UnifiedReaderViewModel::class.java]
 
         setupUI()
-        setupViewPager()
         observeState()
 
-        // Load book
+        // Load book (check audio permission for collaborative mode)
         if (bookId != -1L) {
-            viewModel.loadBook(bookId)
+            val hasAudioPermission = ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            viewModel.loadBook(bookId, hasAudioPermission)
         }
     }
 
@@ -93,10 +90,6 @@ class UnifiedReaderFragment : Fragment() {
         binding.btnBack.setOnClickListener {
             viewModel.stopReading()
             parentFragmentManager.popBackStack()
-        }
-
-        binding.btnModeToggle.setOnClickListener {
-            viewModel.toggleMode()
         }
 
         binding.btnAutoAdvance.setOnClickListener {
@@ -134,23 +127,6 @@ class UnifiedReaderFragment : Fragment() {
             viewModel.nextSentence()
         }
 
-        // Page navigation (full page mode)
-        binding.btnPrevPage.setOnClickListener {
-            val current = binding.viewPager.currentItem
-            if (current > 0) {
-                binding.viewPager.setCurrentItem(current - 1, true)
-            }
-        }
-
-        binding.btnNextPage.setOnClickListener {
-            val adapter = binding.viewPager.adapter as? PageAdapter
-            val total = adapter?.itemCount ?: 0
-            val current = binding.viewPager.currentItem
-            if (current < total - 1) {
-                binding.viewPager.setCurrentItem(current + 1, true)
-            }
-        }
-
         // TTS controls
         binding.btnPlayPause.setOnClickListener {
             viewModel.togglePlayPause()
@@ -176,27 +152,6 @@ class UnifiedReaderFragment : Fragment() {
                     .commit()
             }
         }
-    }
-
-    private fun setupViewPager() {
-        val adapter = PageAdapter(this, emptyList()) {
-            // Add page callback
-            if (bookId != -1L) {
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.container, CameraFragment.newInstance(CameraFragment.MODE_ADD_PAGES, bookId))
-                    .addToBackStack(null)
-                    .commit()
-            }
-        }
-        binding.viewPager.adapter = adapter
-
-        // Page change listener
-        binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                super.onPageSelected(position)
-                viewModel.moveToPage(position)
-            }
-        })
     }
 
     private fun observeState() {
@@ -240,142 +195,97 @@ class UnifiedReaderFragment : Fragment() {
         // Empty state
         val isEmpty = state.pages.isEmpty() && !state.isLoading
         binding.emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
-        binding.modeFlipper.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        binding.sentenceScrollView.visibility = if (isEmpty) View.GONE else View.VISIBLE
         binding.bottomControls.visibility = if (isEmpty) View.GONE else View.VISIBLE
 
-        // Mode-specific UI
-        when (state.readerMode) {
-            UnifiedReaderViewModel.ReaderState.ReaderMode.FULL_PAGE -> {
-                binding.modeFlipper.displayedChild = 0
-                binding.btnModeToggle.tooltipText = "Switch to sentence mode"
-
-                // Show page nav, hide sentence nav
-                updatePageNavigationButtons(state)
-                binding.btnPrevSentence.visibility = View.GONE
-                binding.btnNextSentence.visibility = View.GONE
-
-                // Update ViewPager
-                val adapter = binding.viewPager.adapter as? PageAdapter
-                adapter?.updatePages(state.pages)
-
-                // Sync page position
-                if (binding.viewPager.currentItem != state.currentPageIndex && state.pages.isNotEmpty()) {
-                    binding.viewPager.setCurrentItem(state.currentPageIndex, false)
-                }
+        // Sentence display
+        val sentence = state.currentSentence
+        if (sentence != null) {
+            val displayText = if (state.isLastSentenceIncomplete) {
+                "${sentence.text}..."
+            } else {
+                sentence.text
             }
-            UnifiedReaderViewModel.ReaderState.ReaderMode.SENTENCE -> {
-                binding.modeFlipper.displayedChild = 1
-                binding.btnModeToggle.tooltipText = "Switch to full page mode"
 
-                // Hide page nav, show sentence nav
-                binding.btnPrevPage.visibility = View.GONE
-                binding.btnNextPage.visibility = View.GONE
-                binding.btnPrevSentence.visibility = View.VISIBLE
-                binding.btnNextSentence.visibility = View.VISIBLE
+            // Apply highlighting based on mode
+            val spannable = SpannableString(displayText)
+            var hasHighlight = false
 
-                // Show collaborative button in sentence mode
-                binding.btnCollaborative.visibility = View.VISIBLE
+            // In collaborative mode, highlight the target words
+            if (state.collaborativeMode && state.targetWord != null) {
+                val trimmedText = displayText.trim()
+                val targetWords = state.targetWord
+                val targetStart = trimmedText.length - targetWords.length
+                val targetEnd = trimmedText.length
 
-                // Sentence display
-                val sentence = state.currentSentence
-                if (sentence != null) {
-                    val displayText = if (state.isLastSentenceIncomplete) {
-                        "${sentence.text}..."
-                    } else {
-                        sentence.text
+                val showHighlight = state.isSpeakingTargetWord ||
+                    state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING ||
+                    state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK
+
+                if (showHighlight && targetStart >= 0 && targetStart < targetEnd) {
+                    val highlightColor = when {
+                        state.isSpeakingTargetWord -> R.color.highlight_word  // Yellow
+                        state.lastAttemptSuccess == true -> R.color.highlight_success  // Green
+                        state.lastAttemptSuccess == false -> R.color.error  // Red
+                        else -> R.color.highlight_success  // Green for "your turn to read"
                     }
-
-                    // Apply highlighting based on mode
-                    val spannable = SpannableString(displayText)
-                    var hasHighlight = false
-
-                    // In collaborative mode, highlight the target words when it's user's turn
-                    // Show green when LISTENING (ready for user input), red/green on FEEDBACK
-                    // Don't show during IDLE (TTS still playing) even if targetWord is set
-                    val showCollaborativeHighlight = state.collaborativeMode && (
-                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING ||
-                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK
+                    spannable.setSpan(
+                        BackgroundColorSpan(ContextCompat.getColor(requireContext(), highlightColor)),
+                        targetStart,
+                        targetEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
-                    if (showCollaborativeHighlight && state.targetWord != null) {
-                        // Find where the target words appear in the display text
-                        // Target words are at the end of the sentence
-                        val trimmedText = displayText.trim()
-                        val targetWords = state.targetWord
-                        val targetStart = trimmedText.length - targetWords.length
-                        val targetEnd = trimmedText.length
-
-                        if (targetStart >= 0 && targetStart < targetEnd) {
-                            // Determine highlight color based on feedback state
-                            // Light green = your turn to read, Red = incorrect
-                            val highlightColor = when {
-                                state.lastAttemptSuccess == true -> R.color.highlight_success
-                                state.lastAttemptSuccess == false -> R.color.error
-                                else -> R.color.highlight_success  // Light green for "your turn to read"
-                            }
-                            spannable.setSpan(
-                                BackgroundColorSpan(ContextCompat.getColor(requireContext(), highlightColor)),
-                                targetStart,
-                                targetEnd,
-                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-                            hasHighlight = true
-                        }
-                    }
-
-                    // TTS word highlighting (works in both normal and collaborative modes)
-                    if (state.highlightRange != null && state.isPlaying) {
-                        val (start, end) = state.highlightRange
-                        if (start >= 0 && end <= displayText.length && start < end) {
-                            spannable.setSpan(
-                                BackgroundColorSpan(ContextCompat.getColor(requireContext(), R.color.highlight_word)),
-                                start,
-                                end,
-                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-                            hasHighlight = true
-                        }
-                    }
-
-                    binding.tvSentence.text = if (hasHighlight) spannable else displayText
-
-                    // Orange tint for incomplete sentences
-                    val textColor = if (state.isLastSentenceIncomplete) {
-                        ContextCompat.getColor(requireContext(), R.color.warning)
-                    } else {
-                        ContextCompat.getColor(requireContext(), R.color.reader_text_primary)
-                    }
-                    binding.tvSentence.setTextColor(textColor)
-                } else if (!state.isLoading && state.pages.isNotEmpty()) {
-                    binding.tvSentence.text = "No text on this page"
-                    binding.tvSentence.setTextColor(ContextCompat.getColor(requireContext(), R.color.reader_text_secondary))
+                    hasHighlight = true
                 }
-
-                // Collaborative mode indicator
-                updateCollaborativeIndicator(state)
-
-                // Sentence indicator
-                if (state.sentences.isNotEmpty()) {
-                    binding.tvSentenceIndicator.text = "Sentence ${state.sentenceNumber} of ${state.totalSentences}"
-                    binding.tvSentenceIndicator.visibility = View.VISIBLE
-                } else {
-                    binding.tvSentenceIndicator.visibility = View.GONE
-                }
-
-                // Navigation button states
-                val canGoPrev = state.currentSentenceIndex > 0 || state.currentPageIndex > 0
-                val canGoNext = !state.needsMorePages && (
-                    state.currentSentenceIndex < state.sentences.size - 1 ||
-                    state.currentPageIndex < state.pages.size - 1
-                )
-                binding.btnPrevSentence.alpha = if (canGoPrev) 1f else 0.3f
-                binding.btnNextSentence.alpha = if (canGoNext) 1f else 0.3f
             }
+
+            // TTS word highlighting
+            if (state.highlightRange != null && state.isPlaying) {
+                val (start, end) = state.highlightRange
+                if (start >= 0 && end <= displayText.length && start < end) {
+                    spannable.setSpan(
+                        BackgroundColorSpan(ContextCompat.getColor(requireContext(), R.color.highlight_word)),
+                        start,
+                        end,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    hasHighlight = true
+                }
+            }
+
+            binding.tvSentence.text = if (hasHighlight) spannable else displayText
+
+            // Orange tint for incomplete sentences
+            val textColor = if (state.isLastSentenceIncomplete) {
+                ContextCompat.getColor(requireContext(), R.color.warning)
+            } else {
+                ContextCompat.getColor(requireContext(), R.color.reader_text_primary)
+            }
+            binding.tvSentence.setTextColor(textColor)
+        } else if (!state.isLoading && state.pages.isNotEmpty()) {
+            binding.tvSentence.text = "No text on this page"
+            binding.tvSentence.setTextColor(ContextCompat.getColor(requireContext(), R.color.reader_text_secondary))
         }
 
-        // Hide collaborative button in full page mode
-        if (state.readerMode == UnifiedReaderViewModel.ReaderState.ReaderMode.FULL_PAGE) {
-            binding.btnCollaborative.visibility = View.GONE
+        // Collaborative mode indicator
+        updateCollaborativeIndicator(state)
+
+        // Sentence indicator
+        if (state.sentences.isNotEmpty()) {
+            binding.tvSentenceIndicator.text = "Sentence ${state.sentenceNumber} of ${state.totalSentences}"
+            binding.tvSentenceIndicator.visibility = View.VISIBLE
+        } else {
+            binding.tvSentenceIndicator.visibility = View.GONE
         }
+
+        // Navigation button states
+        val canGoPrev = state.currentSentenceIndex > 0 || state.currentPageIndex > 0
+        val canGoNext = !state.needsMorePages && (
+            state.currentSentenceIndex < state.sentences.size - 1 ||
+            state.currentPageIndex < state.pages.size - 1
+        )
+        binding.btnPrevSentence.alpha = if (canGoPrev) 1f else 0.3f
+        binding.btnNextSentence.alpha = if (canGoNext) 1f else 0.3f
 
         // Need more pages banner
         binding.needMorePagesBanner.visibility = if (state.needsMorePages) View.VISIBLE else View.GONE
@@ -392,16 +302,9 @@ class UnifiedReaderFragment : Fragment() {
         binding.btnAutoAdvance.contentDescription = if (state.autoAdvance) "Auto-advance is on, tap to switch to manual" else "Manual mode, tap to switch to auto-advance"
     }
 
-    private fun updatePageNavigationButtons(state: UnifiedReaderViewModel.ReaderState) {
-        val showNav = state.pages.size > 1
-        binding.btnPrevPage.visibility = if (showNav && state.currentPageIndex > 0) View.VISIBLE else View.GONE
-        binding.btnNextPage.visibility = if (showNav && state.currentPageIndex < state.pages.size - 1) View.VISIBLE else View.GONE
-    }
-
     private fun updateCollaborativeIndicator(state: UnifiedReaderViewModel.ReaderState) {
         if (!state.collaborativeMode) {
             binding.collaborativeIndicator.visibility = View.GONE
-            // Update button appearance
             binding.btnCollaborative.tooltipText = "Collaborative reading: OFF"
             binding.btnCollaborative.alpha = 0.6f
             return
@@ -416,7 +319,6 @@ class UnifiedReaderFragment : Fragment() {
             UnifiedReaderViewModel.CollaborativeState.IDLE -> {
                 binding.micLevelIndicator.visibility = View.GONE
                 if (state.targetWord != null) {
-                    // Waiting for user to speak
                     binding.collaborativeIndicator.visibility = View.VISIBLE
                     binding.tvCollaborativeStatus.text = "Your turn!"
                     binding.ivMicIndicator.setColorFilter(
@@ -428,7 +330,7 @@ class UnifiedReaderFragment : Fragment() {
             }
             UnifiedReaderViewModel.CollaborativeState.LISTENING -> {
                 binding.collaborativeIndicator.visibility = View.VISIBLE
-                val attemptNum = state.attemptCount + 1  // attemptCount is 0-indexed, display as 1-indexed
+                val attemptNum = state.attemptCount + 1
                 binding.tvCollaborativeStatus.text = if (attemptNum > 1) {
                     "Listening... ($attemptNum of 3)"
                 } else {
@@ -437,7 +339,6 @@ class UnifiedReaderFragment : Fragment() {
                 binding.ivMicIndicator.setColorFilter(
                     ContextCompat.getColor(requireContext(), R.color.success)
                 )
-                // Show and update mic level indicator
                 binding.micLevelIndicator.visibility = View.VISIBLE
                 binding.micLevelIndicator.progress = state.micLevel
             }
@@ -466,7 +367,6 @@ class UnifiedReaderFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // Refresh pages in case background processing completed
         viewModel.refreshPages()
     }
 
@@ -483,19 +383,13 @@ class UnifiedReaderFragment : Fragment() {
         _binding = null
     }
 
-    /**
-     * Toggle collaborative reading mode with permission check.
-     */
     private fun toggleCollaborativeMode() {
         val currentState = viewModel.state.value
 
         if (currentState.collaborativeMode) {
-            // Turning off - no permission needed
             viewModel.toggleCollaborativeMode()
         } else {
-            // Turning on - check permission first
             if (!viewModel.isSpeechRecognitionAvailable()) {
-                // Show diagnostic dialog instead of just a toast
                 MaterialAlertDialogBuilder(requireContext())
                     .setTitle("Speech Recognition Unavailable")
                     .setMessage(
@@ -534,47 +428,78 @@ class UnifiedReaderFragment : Fragment() {
 
     private fun showVoicePicker() {
         val ttsService = viewModel.ttsService
-        val voices = ttsService.getAvailableVoices()
 
-        // Build voice list with download option at the end
-        val voiceNames = voices.map { it.name }.toMutableList()
-        voiceNames.add("Download More Voices...")
+        lifecycleScope.launch {
+            val kokoroVoices = ttsService.getKokoroVoices()
+            val androidVoices = ttsService.getAvailableVoices()
 
-        val currentVoiceId = ttsService.getCurrentVoiceId()
-        val originalVoiceId = currentVoiceId
-        var selectedIndex = voices.indexOfFirst { it.id == currentVoiceId }.coerceAtLeast(0)
+            data class VoiceItem(val id: String, val displayName: String, val isKokoro: Boolean)
 
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Select Voice")
-            .setSingleChoiceItems(voiceNames.toTypedArray(), selectedIndex) { dialog, which ->
-                if (which == voices.size) {
-                    // "Download More Voices" selected - open TTS settings
-                    dialog.dismiss()
-                    openTtsSettings()
-                } else {
-                    selectedIndex = which
-                    val selectedVoice = voices[which]
-                    ttsService.setVoice(selectedVoice.id)
+            val allVoices = mutableListOf<VoiceItem>()
 
-                    // Preview the voice at full speed
+            kokoroVoices.forEach { voiceId ->
+                allVoices.add(VoiceItem(voiceId, "Kokoro: $voiceId", isKokoro = true))
+            }
+
+            androidVoices.forEach { voice ->
+                allVoices.add(VoiceItem(voice.id, voice.name, isKokoro = false))
+            }
+
+            val voiceNames = allVoices.map { it.displayName }.toMutableList()
+            voiceNames.add("Download More Voices...")
+
+            val currentKokoroVoice = ttsService.getKokoroVoice()
+            val currentAndroidVoiceId = ttsService.getCurrentVoiceId()
+            val originalKokoroVoice = currentKokoroVoice
+            val originalAndroidVoice = currentAndroidVoiceId
+
+            var selectedIndex = allVoices.indexOfFirst { it.isKokoro && it.id == currentKokoroVoice }
+            if (selectedIndex < 0) {
+                selectedIndex = allVoices.indexOfFirst { !it.isKokoro && it.id == currentAndroidVoiceId }
+            }
+            selectedIndex = selectedIndex.coerceAtLeast(0)
+
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Select Voice")
+                .setSingleChoiceItems(voiceNames.toTypedArray(), selectedIndex) { dialog, which ->
+                    if (which == allVoices.size) {
+                        dialog.dismiss()
+                        openTtsSettings()
+                    } else {
+                        selectedIndex = which
+                        val selectedVoice = allVoices[which]
+
+                        ttsService.stop()
+                        if (selectedVoice.isKokoro) {
+                            lifecycleScope.launch {
+                                ttsService.speakKokoroPreview("Hello, I'm your reading assistant.", selectedVoice.id)
+                            }
+                        } else {
+                            ttsService.setVoice(selectedVoice.id)
+                            ttsService.speakPreview("Hello, I'm your reading assistant.")
+                        }
+                    }
+                }
+                .setPositiveButton("Update") { dialog, _ ->
                     ttsService.stop()
-                    ttsService.speakPreview("Hello, I'm your reading assistant.")
+                    if (selectedIndex < allVoices.size) {
+                        val selectedVoice = allVoices[selectedIndex]
+                        if (selectedVoice.isKokoro) {
+                            viewModel.setKokoroVoice(selectedVoice.id)
+                        }
+                    }
+                    dialog.dismiss()
                 }
-            }
-            .setPositiveButton("Update") { dialog, _ ->
-                // Voice is already set from selection, just dismiss
-                ttsService.stop()
-                dialog.dismiss()
-            }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                // Restore original voice
-                ttsService.stop()
-                if (originalVoiceId != null) {
-                    ttsService.setVoice(originalVoiceId)
+                .setNegativeButton("Cancel") { dialog, _ ->
+                    ttsService.stop()
+                    ttsService.setKokoroVoice(originalKokoroVoice)
+                    if (originalAndroidVoice != null) {
+                        ttsService.setVoice(originalAndroidVoice)
+                    }
+                    dialog.dismiss()
                 }
-                dialog.dismiss()
-            }
-            .show()
+                .show()
+        }
     }
 
     private fun openTtsSettings() {
@@ -594,14 +519,11 @@ class UnifiedReaderFragment : Fragment() {
     private fun showSpeedPicker() {
         val currentRate = viewModel.state.value.speechRate
 
-        // Create dialog layout programmatically
         val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null, false).let {
-            // Build custom layout
             android.widget.LinearLayout(requireContext()).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 setPadding(48, 32, 48, 16)
 
-                // Current speed label
                 val speedLabel = TextView(requireContext()).apply {
                     text = formatSpeedLabel(currentRate)
                     textSize = 18f
@@ -610,9 +532,8 @@ class UnifiedReaderFragment : Fragment() {
                 }
                 addView(speedLabel)
 
-                // SeekBar: 0-15 maps to 0.25-1.0 in 0.05 increments
                 val seekBar = SeekBar(requireContext()).apply {
-                    max = 15  // 16 positions: 0.25, 0.30, ..., 1.0
+                    max = 15
                     progress = ((currentRate - 0.25f) / 0.05f).toInt().coerceIn(0, 15)
 
                     setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -626,7 +547,6 @@ class UnifiedReaderFragment : Fragment() {
                 }
                 addView(seekBar)
 
-                // Min/max labels
                 val labelsLayout = android.widget.LinearLayout(requireContext()).apply {
                     orientation = android.widget.LinearLayout.HORIZONTAL
                     setPadding(0, 8, 0, 0)
@@ -646,7 +566,7 @@ class UnifiedReaderFragment : Fragment() {
                 }
                 addView(labelsLayout)
 
-                tag = seekBar  // Store seekBar reference
+                tag = seekBar
             }
         }
 

@@ -1,12 +1,30 @@
 package com.example.arlo.tts
 
 import android.content.Context
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Base64
 import android.util.Log
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.example.arlo.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.io.IOException
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
 
@@ -23,6 +41,18 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
 
     // Map utterance IDs to their completion callbacks
     private val utteranceCallbacks = ConcurrentHashMap<String, () -> Unit>()
+
+    // Kokoro TTS configuration
+    private val kokoroServerUrl: String? = BuildConfig.KOKORO_SERVER_URL.ifEmpty { null }
+    private val kokoroHttpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+    private var exoPlayer: ExoPlayer? = null
+    private var kokoroTempFile: File? = null
+    private val highlightHandler = Handler(Looper.getMainLooper())
+    private var kokoroVoice: String = "bf_emma"  // British female
+    @Volatile private var isStopped: Boolean = false  // Flag to prevent playback after stop
 
     // TTS engines to try, in order of preference
     private val ttsEngines = listOf(
@@ -178,6 +208,261 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
+    // Callback for when Kokoro fails and we fall back to Android TTS
+    private var onKokoroFallback: (() -> Unit)? = null
+
+    /**
+     * Set a callback that fires when Kokoro is unavailable and we fall back to Android TTS.
+     * Use this to show a toast notification to the user.
+     */
+    fun setOnKokoroFallbackListener(listener: (() -> Unit)?) {
+        onKokoroFallback = listener
+    }
+
+    /**
+     * Speak with Kokoro TTS (preferred) or Android TTS (fallback).
+     * Kokoro provides high-quality voices with word-level timestamps for highlighting.
+     * If cacheManager is provided, checks cache before making network request.
+     */
+    suspend fun speakWithKokoro(
+        text: String,
+        cacheManager: TTSCacheManager? = null,
+        onComplete: () -> Unit
+    ) {
+        isStopped = false  // Clear stop flag when starting new speech
+
+        // Try cached audio first (only for Kokoro voices)
+        val cached = cacheManager?.getCachedAudio(text)
+        if (cached != null) {
+            Log.d(TAG, "Playing from TTS cache: ${text.take(50)}...")
+            currentPlaybackText = text
+            val timestamps = parseTimestampsFromJson(cached.timestampsJson)
+            playWithTimestamps(cached.audioBytes, timestamps, onComplete)
+            return
+        }
+
+        // Try Kokoro synthesis if configured
+        if (kokoroServerUrl != null) {
+            try {
+                Log.d(TAG, "Attempting Kokoro TTS for: ${text.take(50)}...")
+                currentPlaybackText = text  // Store for word position lookup
+                val result = synthesizeKokoro(text)
+
+                // Check if stopped while synthesizing (network request takes time)
+                if (isStopped) {
+                    Log.d(TAG, "Playback cancelled - stopped during synthesis")
+                    return
+                }
+
+                playWithTimestamps(result.audioBytes, result.timestamps, onComplete)
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "Kokoro failed: ${e.message}, falling back to Android TTS")
+                currentPlaybackText = null
+                // Notify listener about fallback
+                onKokoroFallback?.invoke()
+            }
+        }
+
+        // Fallback to existing Android TTS
+        speak(text, onComplete)
+    }
+
+    /**
+     * Parse timestamps from JSON string (used for cached audio).
+     */
+    private fun parseTimestampsFromJson(json: String): List<WordTimestamp> {
+        return try {
+            val array = org.json.JSONArray(json)
+            (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                WordTimestamp(
+                    word = obj.getString("word"),
+                    startMs = (obj.getDouble("start_time") * 1000).toLong(),
+                    endMs = (obj.getDouble("end_time") * 1000).toLong()
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse timestamps JSON: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private suspend fun synthesizeKokoro(text: String): KokoroResult = withContext(Dispatchers.IO) {
+        val json = JSONObject().apply {
+            put("input", text)
+            put("voice", kokoroVoice)
+            put("stream", false)
+        }
+
+        val request = Request.Builder()
+            .url("$kokoroServerUrl/dev/captioned_speech")
+            .post(json.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val response = kokoroHttpClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Kokoro error: ${response.code}")
+        }
+
+        val responseBody = response.body?.string() ?: throw IOException("Empty response")
+        val responseJson = JSONObject(responseBody)
+        val audioBase64 = responseJson.getString("audio")
+        val timestampsArray = responseJson.getJSONArray("timestamps")
+
+        KokoroResult(
+            audioBytes = Base64.decode(audioBase64, Base64.DEFAULT),
+            timestamps = (0 until timestampsArray.length()).map { i ->
+                val obj = timestampsArray.getJSONObject(i)
+                WordTimestamp(
+                    word = obj.getString("word"),
+                    startMs = (obj.getDouble("start_time") * 1000).toLong(),
+                    endMs = (obj.getDouble("end_time") * 1000).toLong()
+                )
+            }
+        )
+    }
+
+    /**
+     * Synthesize Kokoro TTS for caching purposes.
+     * Returns raw audio bytes and timestamps JSON without playing.
+     * Throws IOException if Kokoro server is unavailable.
+     */
+    suspend fun synthesizeKokoroForCache(text: String, voice: String): KokoroCacheResult = withContext(Dispatchers.IO) {
+        if (kokoroServerUrl == null) {
+            throw IOException("Kokoro server URL not configured")
+        }
+
+        val json = JSONObject().apply {
+            put("input", text)
+            put("voice", voice)
+            put("stream", false)
+        }
+
+        val request = Request.Builder()
+            .url("$kokoroServerUrl/dev/captioned_speech")
+            .post(json.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val response = kokoroHttpClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("Kokoro error: ${response.code}")
+        }
+
+        val responseBody = response.body?.string() ?: throw IOException("Empty response")
+        val responseJson = JSONObject(responseBody)
+        val audioBase64 = responseJson.getString("audio")
+        val timestampsArray = responseJson.getJSONArray("timestamps")
+
+        KokoroCacheResult(
+            audioBytes = Base64.decode(audioBase64, Base64.DEFAULT),
+            timestampsJson = timestampsArray.toString()
+        )
+    }
+
+    /**
+     * Result of Kokoro synthesis for caching (audio + timestamps as JSON string).
+     */
+    data class KokoroCacheResult(
+        val audioBytes: ByteArray,
+        val timestampsJson: String
+    )
+
+    private var currentPlaybackText: String? = null
+
+    private fun playWithTimestamps(
+        audioBytes: ByteArray,
+        timestamps: List<WordTimestamp>,
+        onComplete: () -> Unit
+    ) {
+        // Clean up any previous playback
+        stopKokoroPlayback()
+
+        // Save to temp file (ExoPlayer needs a URI)
+        val tempFile = File(context.cacheDir, "kokoro_${System.currentTimeMillis()}.mp3")
+        tempFile.writeBytes(audioBytes)
+        kokoroTempFile = tempFile
+
+        // Setup ExoPlayer
+        exoPlayer = ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.fromFile(tempFile)))
+
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_ENDED) {
+                        cleanupKokoroPlayback()
+                        onComplete()
+                    }
+                }
+            })
+
+            prepare()
+            play()
+        }
+
+        // Schedule word highlights by finding actual positions in original text
+        // Filter out punctuation-only timestamps (Kokoro returns commas, periods as separate words)
+        val originalText = currentPlaybackText ?: ""
+        var searchStart = 0
+        timestamps
+            .filter { it.word.any { c -> c.isLetterOrDigit() } }  // Skip punctuation-only entries
+            .forEach { wordTs ->
+                highlightHandler.postDelayed({
+                    // Find this word in the original text starting from searchStart
+                    val wordStart = originalText.indexOf(wordTs.word, searchStart, ignoreCase = true)
+                    if (wordStart >= 0) {
+                        val wordEnd = wordStart + wordTs.word.length
+                        onRangeStart?.invoke(wordStart, wordEnd)
+                        searchStart = wordEnd  // Continue searching after this word
+                    }
+                }, wordTs.startMs)
+            }
+
+        Log.d(TAG, "Kokoro playback started with ${timestamps.size} word timestamps")
+    }
+
+    private fun stopKokoroPlayback() {
+        isStopped = true  // Prevent any pending playback from starting
+        highlightHandler.removeCallbacksAndMessages(null)
+        val isMainThread = Looper.myLooper() == Looper.getMainLooper()
+        Log.d(TAG, "stopKokoroPlayback called, isMainThread=$isMainThread, exoPlayer=${exoPlayer != null}")
+
+        // ExoPlayer requires main thread for all operations
+        if (isMainThread) {
+            val wasPlaying = exoPlayer?.isPlaying == true
+            exoPlayer?.stop()
+            exoPlayer?.release()
+            exoPlayer = null
+            Log.d(TAG, "ExoPlayer stopped synchronously, wasPlaying=$wasPlaying")
+        } else {
+            highlightHandler.post {
+                val wasPlaying = exoPlayer?.isPlaying == true
+                exoPlayer?.stop()
+                exoPlayer?.release()
+                exoPlayer = null
+                Log.d(TAG, "ExoPlayer stopped via handler post, wasPlaying=$wasPlaying")
+            }
+        }
+    }
+
+    private fun cleanupKokoroPlayback() {
+        stopKokoroPlayback()
+        kokoroTempFile?.delete()
+        kokoroTempFile = null
+    }
+
+    // Kokoro data classes
+    private data class KokoroResult(
+        val audioBytes: ByteArray,
+        val timestamps: List<WordTimestamp>
+    )
+
+    private data class WordTimestamp(
+        val word: String,
+        val startMs: Long,
+        val endMs: Long
+    )
+
     /**
      * Speak text at full speed for voice preview purposes.
      * Temporarily sets speech rate to 1.0, speaks, then restores original rate.
@@ -197,6 +482,10 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun stop() {
+        // Stop Kokoro playback if active
+        stopKokoroPlayback()
+
+        // Stop Android TTS if active
         if (isInitialized && tts != null) {
             tts?.stop()
             // Clear pending callbacks since we're stopping
@@ -205,7 +494,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun isSpeaking(): Boolean {
-        return tts?.isSpeaking == true
+        return exoPlayer?.isPlaying == true || tts?.isSpeaking == true
     }
 
     fun isReady(): Boolean {
@@ -298,6 +587,91 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     }
 
     /**
+     * Set the Kokoro voice to use.
+     */
+    fun setKokoroVoice(voice: String) {
+        kokoroVoice = voice
+        Log.d(TAG, "Kokoro voice set to: $voice")
+    }
+
+    /**
+     * Get the current Kokoro voice.
+     */
+    fun getKokoroVoice(): String = kokoroVoice
+
+    /**
+     * Fetch available Kokoro voices from the server.
+     */
+    suspend fun getKokoroVoices(): List<String> = withContext(Dispatchers.IO) {
+        if (kokoroServerUrl == null) return@withContext emptyList()
+
+        try {
+            val request = Request.Builder()
+                .url("$kokoroServerUrl/v1/audio/voices")
+                .get()
+                .build()
+
+            val response = kokoroHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Failed to fetch Kokoro voices: ${response.code}")
+                return@withContext emptyList()
+            }
+
+            val responseBody = response.body?.string() ?: return@withContext emptyList()
+            val json = JSONObject(responseBody)
+            val voicesArray = json.getJSONArray("voices")
+            // Filter to British voices only (bf_ = British female, bm_ = British male)
+            (0 until voicesArray.length())
+                .map { voicesArray.getString(it) }
+                .filter { it.startsWith("bf_") || it.startsWith("bm_") }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error fetching Kokoro voices: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Preview a Kokoro voice with sample text.
+     */
+    suspend fun speakKokoroPreview(text: String, voice: String) {
+        if (kokoroServerUrl == null) return
+
+        try {
+            val json = JSONObject().apply {
+                put("input", text)
+                put("voice", voice)
+                put("stream", false)
+            }
+
+            val request = Request.Builder()
+                .url("$kokoroServerUrl/dev/captioned_speech")
+                .post(json.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            // Fetch audio on IO thread
+            val audioBytes = withContext(Dispatchers.IO) {
+                val response = kokoroHttpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Kokoro preview failed: ${response.code}")
+                    return@withContext null
+                }
+
+                val responseBody = response.body?.string() ?: return@withContext null
+                val responseJson = JSONObject(responseBody)
+                val audioBase64 = responseJson.getString("audio")
+                Base64.decode(audioBase64, Base64.DEFAULT)
+            } ?: return
+
+            // Play on main thread (ExoPlayer requires it)
+            withContext(Dispatchers.Main) {
+                playWithTimestamps(audioBytes, emptyList()) {}
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Kokoro preview error: ${e.message}", e)
+        }
+    }
+
+    /**
      * Set the speech rate (0.25 to 1.0).
      */
     fun setSpeechRate(rate: Float) {
@@ -353,6 +727,10 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     )
 
     fun shutdown() {
+        // Clean up Kokoro
+        cleanupKokoroPlayback()
+
+        // Clean up Android TTS
         tts?.stop()
         tts?.shutdown()
         tts = null

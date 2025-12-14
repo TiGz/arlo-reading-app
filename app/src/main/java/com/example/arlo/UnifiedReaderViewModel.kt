@@ -26,9 +26,8 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * ViewModel for the Unified Reader that supports both
- * full-page scroll mode and sentence-by-sentence mode.
- * Both modes use sentencesJson as the data source.
+ * ViewModel for the sentence-by-sentence reader.
+ * Uses sentencesJson as the data source for all reading.
  */
 class UnifiedReaderViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -56,9 +55,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     private var errorSoundId: Int = 0
 
     init {
-        // Load and apply saved speech rate
+        // Load and apply saved speech rate and Kokoro voice
         val savedRate = ttsPreferences.getSpeechRate()
         ttsService.setSpeechRate(savedRate)
+        val savedKokoroVoice = ttsPreferences.getKokoroVoice()
+        ttsService.setKokoroVoice(savedKokoroVoice)
 
         // Get speech recognition availability from Application-level diagnostics
         val arloApp = application as ArloApplication
@@ -92,7 +93,6 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val currentPageIndex: Int = 0,
         val currentSentenceIndex: Int = 0,
         val sentences: List<SentenceData> = emptyList(),
-        val readerMode: ReaderMode = ReaderMode.SENTENCE,
         val isPlaying: Boolean = false,
         val isLoading: Boolean = true,
         val pendingPageCount: Int = 0,
@@ -106,19 +106,15 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val targetWord: String? = null,
         val attemptCount: Int = 0,
         val lastAttemptSuccess: Boolean? = null,  // null = no attempt yet, true = success, false = failure
-        val micLevel: Int = 0  // 0-100 mic input level for visual feedback
+        val micLevel: Int = 0,  // 0-100 mic input level for visual feedback
+        val isSpeakingTargetWord: Boolean = false  // True when TTS is reading target word after failures
     ) {
-        enum class ReaderMode { FULL_PAGE, SENTENCE }
-
         val currentPage: Page? get() = pages.getOrNull(currentPageIndex)
         val currentSentence: SentenceData? get() = sentences.getOrNull(currentSentenceIndex)
         val pageNumber: Int get() = currentPage?.pageNumber ?: 1
         val totalPages: Int get() = pages.size
         val sentenceNumber: Int get() = currentSentenceIndex + 1
         val totalSentences: Int get() = sentences.size
-
-        // Full page text built from sentences
-        val fullPageText: String get() = sentences.joinToString(" ") { it.text }
 
         val isLastSentenceIncomplete: Boolean get() =
             currentSentenceIndex == sentences.lastIndex &&
@@ -130,7 +126,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     private var bookId: Long = -1L
 
-    fun loadBook(bookId: Long) {
+    fun loadBook(bookId: Long, hasAudioPermission: Boolean) {
         this.bookId = bookId
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
@@ -143,6 +139,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             val savedCollaborativeMode = ttsPreferences.getCollaborativeMode()
             val savedAutoAdvance = ttsPreferences.getAutoAdvance()
             val savedSpeechRate = ttsPreferences.getSpeechRate()
+
+            // Only enable collaborative mode if we have audio permission
+            // (permission can be revoked during app reinstall)
+            val effectiveCollaborativeMode = savedCollaborativeMode && hasAudioPermission
 
             if (book != null && pages.isNotEmpty()) {
                 // Resume from last position or start at beginning
@@ -162,7 +162,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     needsMorePages = false,
                     isLoading = false,
                     speechRate = savedSpeechRate,
-                    collaborativeMode = savedCollaborativeMode,
+                    collaborativeMode = effectiveCollaborativeMode,
                     autoAdvance = savedAutoAdvance
                 )
             } else {
@@ -171,7 +171,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     pages = pages,
                     isLoading = false,
                     needsMorePages = pages.isEmpty(),
-                    collaborativeMode = savedCollaborativeMode,
+                    collaborativeMode = effectiveCollaborativeMode,
                     autoAdvance = savedAutoAdvance
                 )
             }
@@ -187,19 +187,6 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 _state.value = _state.value.copy(pendingPageCount = count)
             }
         }
-    }
-
-    /**
-     * Toggle between full-page and sentence reading modes.
-     * Preserves current position.
-     */
-    fun toggleMode() {
-        val newMode = when (_state.value.readerMode) {
-            ReaderState.ReaderMode.FULL_PAGE -> ReaderState.ReaderMode.SENTENCE
-            ReaderState.ReaderMode.SENTENCE -> ReaderState.ReaderMode.FULL_PAGE
-        }
-        ttsService.stop()
-        _state.value = _state.value.copy(readerMode = newMode, isPlaying = false, highlightRange = null)
     }
 
     /**
@@ -221,6 +208,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         ttsService.setSpeechRate(clampedRate)
         ttsPreferences.saveSpeechRate(clampedRate)
         _state.value = _state.value.copy(speechRate = clampedRate)
+    }
+
+    /**
+     * Set the Kokoro TTS voice.
+     */
+    fun setKokoroVoice(voice: String) {
+        ttsService.setKokoroVoice(voice)
+        ttsPreferences.saveKokoroVoice(voice)
     }
 
     /**
@@ -327,15 +322,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             )
         } else {
             // Start playing
-            when (current.readerMode) {
-                ReaderState.ReaderMode.FULL_PAGE -> speakFullPage()
-                ReaderState.ReaderMode.SENTENCE -> {
-                    if (current.collaborativeMode) {
-                        speakCurrentSentenceCollaborative()
-                    } else {
-                        speakCurrentSentence()
-                    }
-                }
+            if (current.collaborativeMode) {
+                speakCurrentSentenceCollaborative()
+            } else {
+                speakCurrentSentence()
             }
             _state.value = current.copy(isPlaying = true)
         }
@@ -344,32 +334,6 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     fun stopReading() {
         ttsService.stop()
         _state.value = _state.value.copy(isPlaying = false, highlightRange = null)
-    }
-
-    private fun speakFullPage() {
-        val text = _state.value.fullPageText
-        if (text.isBlank()) return
-
-        if (ttsService.isReady()) {
-            // Set up word highlighting callback
-            ttsService.setOnRangeStartListener { start, end ->
-                _state.value = _state.value.copy(highlightRange = Pair(start, end))
-            }
-
-            ttsService.speak(text) {
-                // Callback when TTS finishes
-                if (_state.value.isPlaying) {
-                    // Move to next page if auto-advancing
-                    val nextPageIndex = _state.value.currentPageIndex + 1
-                    if (nextPageIndex < _state.value.pages.size) {
-                        moveToPage(nextPageIndex)
-                        speakFullPage()
-                    } else {
-                        _state.value = _state.value.copy(isPlaying = false, needsMorePages = true)
-                    }
-                }
-            }
-        }
     }
 
     private fun speakCurrentSentence() {
@@ -389,18 +353,20 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 _state.value = _state.value.copy(highlightRange = Pair(start, end))
             }
 
-            ttsService.speak(sentence.text) {
-                // Callback when TTS finishes
-                if (_state.value.isPlaying) {
-                    if (_state.value.autoAdvance) {
-                        // Auto-advance mode: move to next sentence and keep reading
-                        nextSentence()
-                        if (_state.value.isPlaying && !_state.value.needsMorePages) {
-                            speakCurrentSentence()
+            viewModelScope.launch {
+                ttsService.speakWithKokoro(sentence.text) {
+                    // Callback when TTS finishes
+                    if (_state.value.isPlaying) {
+                        if (_state.value.autoAdvance) {
+                            // Auto-advance mode: move to next sentence and keep reading
+                            nextSentence()
+                            if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                                speakCurrentSentence()
+                            }
+                        } else {
+                            // Manual mode: stop after reading one sentence
+                            _state.value = _state.value.copy(isPlaying = false)
                         }
-                    } else {
-                        // Manual mode: stop after reading one sentence
-                        _state.value = _state.value.copy(isPlaying = false)
                     }
                 }
             }
@@ -654,10 +620,12 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     _state.value = _state.value.copy(highlightRange = Pair(start, end))
                 }
 
-                ttsService.speak(textWithoutTargetWords) {
-                    // Clear highlight when done speaking partial sentence
-                    _state.value = _state.value.copy(highlightRange = null)
-                    onPartialTTSComplete(targetWords)
+                viewModelScope.launch {
+                    ttsService.speakWithKokoro(textWithoutTargetWords) {
+                        // Clear highlight when done speaking partial sentence
+                        _state.value = _state.value.copy(highlightRange = null)
+                        onPartialTTSComplete(targetWords)
+                    }
                 }
             }
         }
@@ -755,9 +723,12 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                         // Count as failed attempt
                         handleSpeechResults(emptyList())
                     }
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                        // Recognizer busy - count as failed attempt and retry
-                        Log.w(TAG, "Recognizer busy")
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                    SpeechRecognizer.ERROR_CLIENT,
+                    SpeechRecognizer.ERROR_NETWORK,
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
+                        // Transient errors - count as failed attempt and retry
+                        Log.w(TAG, "Transient speech error: $errorName, treating as failed attempt")
                         handleSpeechResults(emptyList())
                     }
                     else -> {
@@ -873,6 +844,12 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val current = _state.value
         val targetWord = current.targetWord ?: return
 
+        // Ignore if we already processed a successful result (prevents error callback after cancel)
+        if (current.collaborativeState == CollaborativeState.FEEDBACK && current.lastAttemptSuccess == true) {
+            Log.d("SpeechRecognition", "handleSpeechResults: ignoring, already processed success")
+            return
+        }
+
         val isMatch = isWordMatch(results, targetWord)
         Log.d("SpeechRecognition", "handleSpeechResults: results=$results, target='$targetWord', isMatch=$isMatch")
         val newAttemptCount = current.attemptCount + 1
@@ -890,6 +867,13 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             viewModelScope.launch {
                 delay(500)
                 Log.d("SpeechRecognition", "Success delay complete, calling nextSentence()")
+                // Reset collaborative state before advancing to prevent stale indicator showing
+                _state.value = _state.value.copy(
+                    collaborativeState = CollaborativeState.IDLE,
+                    attemptCount = 0,
+                    lastAttemptSuccess = null,
+                    targetWord = null
+                )
                 nextSentence()
                 Log.d("SpeechRecognition", "After nextSentence: isPlaying=${_state.value.isPlaying}, needsMorePages=${_state.value.needsMorePages}")
                 // Continue if still playing
@@ -910,16 +894,19 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             )
 
             if (newAttemptCount >= 3) {
-                // After 3 failures, TTS reads the correct word and advances
+                // After 3 failures, TTS reads the correct word and gives 3 more tries
                 viewModelScope.launch {
                     delay(500)
-                    speakCorrectWordAndAdvance(targetWord)
+                    speakCorrectWordAndRetry(targetWord)
                 }
             } else {
                 // Try again
                 viewModelScope.launch {
                     delay(500)
-                    _state.value = _state.value.copy(collaborativeState = CollaborativeState.IDLE)
+                    _state.value = _state.value.copy(
+                        collaborativeState = CollaborativeState.IDLE,
+                        lastAttemptSuccess = null  // Reset so highlight goes back to green
+                    )
                     startSpeechRecognition()
                 }
             }
@@ -927,17 +914,33 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * TTS reads the correct word after 3 failed attempts, then advances.
+     * TTS reads the correct word after 3 failed attempts, then gives user 3 more tries.
      */
-    private fun speakCorrectWordAndAdvance(word: String) {
+    private fun speakCorrectWordAndRetry(word: String) {
         if (ttsService.isReady()) {
-            ttsService.speak(word) {
-                viewModelScope.launch {
-                    delay(300)
-                    nextSentence()
-                    // Continue if still playing
-                    if (_state.value.isPlaying && !_state.value.needsMorePages) {
-                        speakCurrentSentenceCollaborative()
+            // Clear any previous highlight listener - we don't want position-based highlighting
+            // for just the target word (positions would be wrong)
+            ttsService.setOnRangeStartListener { _, _ -> /* no-op */ }
+
+            // Set flag to show yellow highlight on target word
+            // Also reset lastAttemptSuccess so when listening starts, highlight is green (not red from last failure)
+            _state.value = _state.value.copy(
+                isSpeakingTargetWord = true,
+                highlightRange = null,  // Clear any stale highlight range
+                lastAttemptSuccess = null  // Reset so highlight will be green when listening starts
+            )
+
+            viewModelScope.launch {
+                ttsService.speakWithKokoro(word) {
+                    viewModelScope.launch {
+                        delay(300)
+                        // Reset attempt count and let user try again after hearing pronunciation
+                        _state.value = _state.value.copy(
+                            collaborativeState = CollaborativeState.IDLE,
+                            attemptCount = 0,
+                            isSpeakingTargetWord = false
+                        )
+                        startSpeechRecognition()
                     }
                 }
             }

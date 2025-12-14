@@ -31,13 +31,33 @@ class TTSPreferences(context: Context) {
         return prefs.getBoolean(KEY_AUTO_ADVANCE, DEFAULT_AUTO_ADVANCE)
     }
 
+    fun saveKokoroVoice(voice: String) {
+        prefs.edit().putString(KEY_KOKORO_VOICE, voice).apply()
+    }
+
+    fun getKokoroVoice(): String {
+        return prefs.getString(KEY_KOKORO_VOICE, DEFAULT_KOKORO_VOICE) ?: DEFAULT_KOKORO_VOICE
+    }
+
+    /**
+     * Check if the currently selected voice is a Kokoro voice (requires network).
+     * Kokoro voices start with bf_ (British female) or bm_ (British male).
+     * On-device Android TTS voices don't need pre-caching.
+     */
+    fun isKokoroVoice(): Boolean {
+        val voice = getKokoroVoice()
+        return voice.startsWith("bf_") || voice.startsWith("bm_")
+    }
+
     companion object {
         private const val PREFS_NAME = "tts_preferences"
         private const val KEY_SPEECH_RATE = "speech_rate"
         private const val KEY_COLLABORATIVE_MODE = "collaborative_mode"
         private const val KEY_AUTO_ADVANCE = "auto_advance"
+        private const val KEY_KOKORO_VOICE = "kokoro_voice"
         private const val DEFAULT_SPEECH_RATE = 1.0f
         private const val DEFAULT_COLLABORATIVE_MODE = true  // Default ON
         private const val DEFAULT_AUTO_ADVANCE = true
+        private const val DEFAULT_KOKORO_VOICE = "bm_lewis"  // British male (Kokoro)
     }
 }

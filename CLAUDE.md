@@ -7,9 +7,11 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 **Key Features:**
 - Camera capture with CameraX (two-step flow: cover + pages)
 - OCR text extraction via Claude Haiku API with sentence-level parsing
-- Sentence-by-sentence reading mode with large fonts (28sp)
-- Text-to-speech with auto-advance between sentences
-- Touch-to-read from any position
+- Background OCR queue with retry logic and sentence continuation
+- Sentence-by-sentence reading mode (28sp fonts)
+- Kokoro TTS integration with word-level highlighting and pre-caching
+- Collaborative reading mode (TTS reads, child speaks last word)
+- Speech recognition with Google Speech Services
 - Book/page organization with Room database
 - Reading progress tracking and restoration (page + sentence index)
 - Secure API key storage via EncryptedSharedPreferences
@@ -20,7 +22,7 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - **Language:** Kotlin
 - **Min SDK:** 26 | **Target SDK:** 34
 - **Build:** Gradle 8.13.1, Kotlin 1.9.22
-- **UI:** View Binding, Material Components 1.11.0, ViewPager2
+- **UI:** View Binding, Material Components 1.11.0
 - **Camera:** CameraX 1.3.1
 - **OCR:** Claude Haiku API (model: claude-3-5-haiku-20241022) via OkHttp 4.12.0
 - **Database:** Room 2.6.1 (version 3 with migrations)
@@ -28,6 +30,9 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - **JSON:** Gson 2.10.1
 - **Image Loading:** Coil 2.5.0
 - **Architecture:** MVVM with ViewModels, LiveData, StateFlow, and Flow
+- **TTS:** Kokoro TTS server (Docker) with Android TTS fallback
+- **Speech Recognition:** Google Speech Services (SpeechRecognizer)
+- **Audio:** ExoPlayer for Kokoro audio, SoundPool for feedback sounds
 
 ## Project Structure
 
@@ -43,24 +48,27 @@ app/src/main/java/com/example/arlo/
 │   └── SentenceListConverter.kt  # Room TypeConverter for JSON
 ├── ml/
 │   └── ClaudeOCRService.kt   # Claude Haiku API OCR with retry logic
+├── ocr/
+│   └── OCRQueueManager.kt    # Background OCR queue with retry + continuation
+├── speech/
+│   ├── SpeechSetupActivity.kt   # First-launch setup for Fire tablets
+│   └── SpeechSetupManager.kt    # Speech recognition diagnostics
 ├── tts/
-│   └── TTSService.kt         # TTS with multi-engine fallback
+│   ├── TTSService.kt         # Kokoro + Android TTS with word highlighting
+│   ├── TTSPreferences.kt     # Speech rate, voice, collaborative mode prefs
+│   └── TTSCacheManager.kt    # Pre-cache Kokoro audio for sentences
 ├── ApiKeyManager.kt          # EncryptedSharedPreferences for API key
 ├── MainActivity.kt           # Single Activity host with API key dialog
 ├── ArloApplication.kt        # App singleton with lazy init
 ├── LibraryFragment.kt        # 2-column book grid
 ├── LibraryViewModel.kt       # Books with page counts
 ├── BookWithInfo.kt           # Data class for enriched display
-├── ReaderFragment.kt         # ViewPager2 for pages + sentence mode entry
-├── ReaderViewModel.kt        # Pages & reading position
-├── PageFragment.kt           # Single page with touch-to-read
-├── SentenceReaderFragment.kt # Sentence-by-sentence reading with large fonts
-├── SentenceReaderViewModel.kt # Sentence navigation + TTS control
+├── UnifiedReaderFragment.kt  # Sentence-by-sentence reader with collaborative mode
+├── UnifiedReaderViewModel.kt # Reader state, TTS, speech recognition, audio feedback
 ├── CameraFragment.kt         # Camera with two capture modes
 ├── CameraViewModel.kt        # Claude OCR + book creation logic
 ├── AddPageFragment.kt        # Reusable add page button
-├── BookAdapter.kt            # ListAdapter with DiffUtil
-└── PageAdapter.kt            # FragmentStateAdapter for ViewPager2
+└── BookAdapter.kt            # ListAdapter with DiffUtil
 ```
 
 ## Database Schema
@@ -84,6 +92,10 @@ app/src/main/java/com/example/arlo/
 - `pageNumber` (Int)
 - `sentencesJson` (String?, nullable) - JSON array of SentenceData
 - `lastSentenceComplete` (Boolean) - for sentence continuation across pages
+- `processingStatus` (String) - PENDING | PROCESSING | COMPLETED | FAILED
+- `retryCount` (Int) - number of OCR retry attempts
+- `lastError` (String?, nullable) - error message from last failure
+- `detectedPageNumber` (Int?, nullable) - page number detected by OCR
 - Index on `bookId` for query performance
 
 **SentenceData (JSON):**
@@ -120,7 +132,7 @@ app/src/main/java/com/example/arlo/
    - 2-column grid of books with cover thumbnails
    - Shows page count and reading progress overlay
    - FAB → CameraFragment (MODE_NEW_BOOK)
-   - Card tap → ReaderFragment
+   - Card tap → UnifiedReaderFragment
 
 2. **CameraFragment** (Two modes)
    - `MODE_NEW_BOOK`: Cover capture → Claude title extraction → page capture
@@ -128,22 +140,20 @@ app/src/main/java/com/example/arlo/
    - Creates thumbnails (400px width, 85% JPEG)
    - Shows loading overlay during OCR ("Extracting text with AI...")
 
-3. **ReaderFragment** (Page browser)
-   - ViewPager2 horizontal page navigation
-   - Controls: Back, Add Page, Prev/Next, Play/Pause/Stop/Restart, Recapture
-   - **Sentence Mode** button → SentenceReaderFragment
-   - Auto-restores last read position
+3. **UnifiedReaderFragment** (Sentence reader)
+   - One sentence at a time (28sp serif font)
+   - **Collaborative reading**: TTS reads all but last word, child speaks it
+   - Word-level highlighting during TTS playback
+   - Controls: Prev/Next sentence, Play/Pause, Mic toggle
+   - Shows pending OCR count indicator
+   - Settings: Speech rate slider, voice selector, auto-advance toggle
+   - Auto-restores last read position (page + sentence)
 
-4. **SentenceReaderFragment** (Large font reading)
-   - Displays one sentence at a time (28sp serif font)
-   - Controls: Prev/Next sentence, Play/Pause TTS
-   - Auto-advances TTS with sentence-level callbacks
-   - Shows "Scan more pages" banner at end of content
-   - Orange tint for incomplete sentences (cut off mid-thought)
-
-5. **PageFragment** (Single page)
-   - Displays OCR text with touch-to-read
-   - Word highlighting during TTS (#FFE8A0)
+4. **SpeechSetupActivity** (First launch)
+   - Fire tablet speech recognition setup wizard
+   - Checks: Google app installed, permissions granted, speech test
+   - Guides user through enabling speech recognition
+   - Can be skipped but collaborative mode won't work
 
 ## Key Implementation Details
 
@@ -163,18 +173,47 @@ app/src/main/java/com/example/arlo/
 - Invalid key (401) triggers re-entry dialog
 
 ### TTS Service
-- **Multi-engine fallback:** Google TTS → SVOX Pico → System default
+- **Kokoro TTS (primary):** High-quality neural voices via Docker server
+  - Voices: `bf_emma`, `bf_isabella`, `bm_lewis`, `bm_george` (British)
+  - Word-level timestamps for precise highlighting
+  - Audio playback via ExoPlayer
+  - Pre-caching support for offline reading
+- **Android TTS (fallback):** Google TTS → SVOX Pico → System default
 - **Language fallback:** US English → UK English → Default locale
-- `UtteranceProgressListener.onRangeStart()` for word highlighting
 - `setOnRangeStartListener()` / `setOnSpeechDoneListener()` callbacks
-- `speak(text, onComplete)` overload for sentence-level auto-advance
+- `speakWithKokoro()` for Kokoro-first with Android fallback
+
+### Kokoro TTS Server
+- **Location:** `server/` directory with docker-compose.yml
+- **Port:** 8880 (configurable via `KOKORO_SERVER_URL` in local.properties)
+- **Endpoints:** `/dev/captioned_speech` (synthesis), `/v1/audio/voices` (list voices)
+- **Start:** `docker compose up -d`
+- **Test:** `curl http://localhost:8880/health`
+
+### Collaborative Reading Mode
+- TTS speaks all but the last word of each sentence
+- App listens for child to speak the final word
+- **3-state machine:** IDLE → LISTENING → FEEDBACK
+- Fuzzy matching: accepts word if spoken text contains it
+- **3 retries** before TTS reads the word and continues
+- Audio feedback: success ping, error buzz (via SoundPool)
+- Purple highlight (#E0B0FF) for the word being listened for
+
+### Speech Recognition
+- Uses Google Speech Services (SpeechRecognizer)
+- **Fire tablet setup:** Requires Google app with RECORD_AUDIO permission
+- Pre-warmed recognizer to reduce startup latency (100ms delay after TTS)
+- First-launch setup wizard validates all requirements
+- Graceful degradation if unavailable (collaborative mode disabled)
 
 ### Data Flow
 1. Camera captures image → saved to `context.filesDir`
-2. ClaudeOCRService extracts sentences as JSON from image
-3. CameraViewModel creates Book + Page entities with sentencesJson
-4. Room DAO persists via Repository (handles sentence continuation)
-5. Flow emits updates → LiveData/StateFlow → UI refresh
+2. Page queued with PENDING status via OCRQueueManager
+3. OCRQueueManager processes queue (one at a time, with retries)
+4. ClaudeOCRService extracts sentences as JSON from image
+5. Sentence continuation handled (merges incomplete sentences across pages)
+6. TTSCacheManager pre-caches Kokoro audio in background
+7. Flow emits updates → StateFlow → UI refresh
 
 ### Sentence Continuation
 - When a page ends mid-sentence, `lastSentenceComplete = false`
@@ -197,10 +236,18 @@ app/src/main/java/com/example/arlo/
 
 Custom styles: `ArloFabStyle`, `ArloBookCard`, `ArloTextAppearance.*`, `ArloButton.*`, `ArloReaderControl`
 
+### OCR Queue Manager
+- Background processing with PENDING → PROCESSING → COMPLETED states
+- **Retry logic:** 3 attempts with exponential backoff (2s, 4s, 8s)
+- Detects missing pages via OCR-detected page numbers
+- Handles sentence continuation across page boundaries
+- Triggers TTS pre-caching on completion
+
 ## Permissions
 
 - `android.permission.CAMERA` - Required for page capture
-- `android.permission.INTERNET` - Required for Claude API calls
+- `android.permission.INTERNET` - Required for Claude API and Kokoro TTS
+- `android.permission.RECORD_AUDIO` - Required for collaborative reading mode
 
 ## Development Notes
 
@@ -210,3 +257,18 @@ Custom styles: `ArloFabStyle`, `ArloBookCard`, `ArloTextAppearance.*`, `ArloButt
 - Images stored in app's internal storage
 - Database: "arlo_database" with export schema disabled
 - TTS initialized eagerly in ArloApplication
+- ExoPlayer used for Kokoro audio playback
+- SoundPool used for success/error audio feedback
+- BuildConfig.KOKORO_SERVER_URL set via local.properties
+
+## Configuration
+
+**local.properties** (not committed):
+```properties
+KOKORO_SERVER_URL=http://192.168.x.x:8880
+```
+
+## Sound Assets
+
+- `res/raw/success_ping.mp3` - Correct answer feedback
+- `res/raw/error_buzz.mp3` - Wrong answer feedback

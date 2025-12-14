@@ -99,7 +99,7 @@
             android:tooltipText="Auto-advance: ON"
             app:tint="@color/primary" />
 
-        <!-- Collaborative mode toggle button (sentence mode only) -->
+        <!-- Collaborative mode toggle button -->
         <ImageButton
             android:id="@+id/btnCollaborative"
             android:layout_width="48dp"
@@ -109,20 +109,6 @@
             android:padding="12dp"
             android:src="@drawable/ic_mic"
             android:tooltipText="Collaborative reading: OFF"
-            android:visibility="gone"
-            app:tint="@color/primary"
-            tools:visibility="visible" />
-
-        <!-- Mode toggle button -->
-        <ImageButton
-            android:id="@+id/btnModeToggle"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Switch reading mode"
-            android:padding="12dp"
-            android:src="@drawable/ic_format_size"
-            android:tooltipText="Switch to sentence mode"
             app:tint="@color/primary" />
 
         <!-- Add page button -->
@@ -170,149 +156,100 @@
 
     </LinearLayout>
 
-    <!-- ViewFlipper for mode switching -->
-    <ViewFlipper
-        android:id="@+id/modeFlipper"
+    <!-- Sentence reading area -->
+    <ScrollView
+        android:id="@+id/sentenceScrollView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:fillViewport="true"
         app:layout_constraintBottom_toTopOf="@id/bottomControls"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/processingBanner">
 
-        <!-- Child 0: Full page mode with ViewPager2 -->
-        <androidx.viewpager2.widget.ViewPager2
-            android:id="@+id/viewPager"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp">
 
-        <!-- Child 1: Sentence mode -->
-        <ScrollView
-            android:id="@+id/sentenceScrollView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:fillViewport="true">
-
-            <LinearLayout
+            <TextView
+                android:id="@+id/tvSentence"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.4"
+                android:textColor="@color/reader_text_primary"
+                android:textSize="28sp"
+                tools:text="The old man walked slowly down the dusty road." />
+
+            <!-- Collaborative mode indicator -->
+            <LinearLayout
+                android:id="@+id/collaborativeIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:padding="24dp">
+                android:visibility="gone"
+                tools:visibility="visible">
 
-                <TextView
-                    android:id="@+id/tvSentence"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="serif"
-                    android:gravity="center"
-                    android:lineSpacingMultiplier="1.4"
-                    android:textColor="@color/reader_text_primary"
-                    android:textSize="28sp"
-                    tools:text="The old man walked slowly down the dusty road." />
-
-                <!-- Collaborative mode indicator -->
                 <LinearLayout
-                    android:id="@+id/collaborativeIndicator"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
                     android:gravity="center"
-                    android:orientation="vertical"
-                    android:visibility="gone"
-                    tools:visibility="visible">
+                    android:orientation="horizontal">
 
-                    <LinearLayout
+                    <ImageView
+                        android:id="@+id/ivMicIndicator"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="8dp"
+                        android:src="@drawable/ic_mic"
+                        app:tint="@color/primary" />
+
+                    <TextView
+                        android:id="@+id/tvCollaborativeStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:id="@+id/ivMicIndicator"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:layout_marginEnd="8dp"
-                            android:src="@drawable/ic_mic"
-                            app:tint="@color/primary" />
-
-                        <TextView
-                            android:id="@+id/tvCollaborativeStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textColor="@color/primary"
-                            android:textSize="16sp"
-                            android:textStyle="bold"
-                            tools:text="Your turn!" />
-
-                    </LinearLayout>
-
-                    <!-- Mic level indicator -->
-                    <ProgressBar
-                        android:id="@+id/micLevelIndicator"
-                        style="?android:attr/progressBarStyleHorizontal"
-                        android:layout_width="150dp"
-                        android:layout_height="8dp"
-                        android:layout_marginTop="8dp"
-                        android:max="100"
-                        android:progress="0"
-                        android:progressTint="@color/primary"
-                        android:visibility="gone"
-                        tools:progress="50"
-                        tools:visibility="visible" />
+                        android:textColor="@color/primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        tools:text="Your turn!" />
 
                 </LinearLayout>
 
-                <!-- Sentence indicator -->
-                <TextView
-                    android:id="@+id/tvSentenceIndicator"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:textColor="@color/reader_text_secondary"
-                    android:textSize="14sp"
-                    tools:text="Sentence 3 of 7" />
+                <!-- Mic level indicator -->
+                <ProgressBar
+                    android:id="@+id/micLevelIndicator"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="150dp"
+                    android:layout_height="8dp"
+                    android:layout_marginTop="8dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressTint="@color/primary"
+                    android:visibility="gone"
+                    tools:progress="50"
+                    tools:visibility="visible" />
 
             </LinearLayout>
 
-        </ScrollView>
+            <!-- Sentence indicator -->
+            <TextView
+                android:id="@+id/tvSentenceIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:textColor="@color/reader_text_secondary"
+                android:textSize="14sp"
+                tools:text="Sentence 3 of 7" />
 
-    </ViewFlipper>
+        </LinearLayout>
 
-    <!-- Page navigation arrows (overlay, for full page mode) -->
-    <ImageButton
-        android:id="@+id/btnPrevPage"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="4dp"
-        android:alpha="0.7"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Previous page"
-        android:padding="12dp"
-        android:src="@drawable/ic_chevron_left"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/bottomControls"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/processingBanner"
-        app:tint="@color/reader_text_secondary"
-        tools:visibility="visible" />
-
-    <ImageButton
-        android:id="@+id/btnNextPage"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginEnd="4dp"
-        android:alpha="0.7"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Next page"
-        android:padding="12dp"
-        android:src="@drawable/ic_chevron_right"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/bottomControls"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/processingBanner"
-        app:tint="@color/reader_text_secondary"
-        tools:visibility="visible" />
+    </ScrollView>
 
     <!-- Need More Pages Banner -->
     <LinearLayout
@@ -362,7 +299,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Previous sentence button (sentence mode only) -->
+        <!-- Previous sentence button -->
         <ImageButton
             android:id="@+id/btnPrevSentence"
             android:layout_width="64dp"
@@ -372,9 +309,7 @@
             android:padding="12dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_chevron_left"
-            android:visibility="gone"
-            app:tint="@color/reader_text_primary"
-            tools:visibility="visible" />
+            app:tint="@color/reader_text_primary" />
 
         <Space
             android:layout_width="0dp"
@@ -398,7 +333,7 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <!-- Next sentence button (sentence mode only) -->
+        <!-- Next sentence button -->
         <ImageButton
             android:id="@+id/btnNextSentence"
             android:layout_width="64dp"
@@ -408,9 +343,7 @@
             android:padding="12dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_chevron_right"
-            android:visibility="gone"
-            app:tint="@color/reader_text_primary"
-            tools:visibility="visible" />
+            app:tint="@color/reader_text_primary" />
 
     </LinearLayout>
 

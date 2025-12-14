@@ -11,17 +11,13 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import com.example.arlo.data.Book
 import com.example.arlo.databinding.ActivityMainBinding
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var apiKeyManager: ApiKeyManager
     private val handler = Handler(Looper.getMainLooper())
-    private val repository by lazy { (application as ArloApplication).repository }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,47 +47,6 @@ class MainActivity : AppCompatActivity() {
                 .replace(R.id.container, LibraryFragment())
                 .commit()
         }
-
-        // Check for legacy books that need migration
-        checkForLegacyBooks()
-
-    }
-
-    private fun checkForLegacyBooks() {
-        lifecycleScope.launch {
-            val legacyBooks = repository.getBooksWithoutSentences()
-            if (legacyBooks.isNotEmpty()) {
-                showLegacyMigrationDialog(legacyBooks)
-            }
-        }
-    }
-
-    private fun showLegacyMigrationDialog(legacyBooks: List<Book>) {
-        val bookCount = legacyBooks.size
-        val bookWord = if (bookCount == 1) "book" else "books"
-        val bookNames = legacyBooks.take(3).joinToString(", ") { "\"${it.title}\"" }
-        val moreText = if (bookCount > 3) " and ${bookCount - 3} more" else ""
-
-        AlertDialog.Builder(this)
-            .setTitle("Update Required")
-            .setMessage(
-                "Found $bookCount old $bookWord that use a legacy format:\n\n" +
-                "$bookNames$moreText\n\n" +
-                "These books were created before the new sentence-based reading system. " +
-                "Would you like to remove them?"
-            )
-            .setPositiveButton("Remove") { _, _ ->
-                lifecycleScope.launch {
-                    repository.deleteLegacyBooks(legacyBooks.map { it.id })
-                    Toast.makeText(
-                        this@MainActivity,
-                        "$bookCount legacy $bookWord removed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-            .setNegativeButton("Keep for Now", null)
-            .show()
     }
 
     private fun showApiKeyDialog(onSuccess: () -> Unit) {

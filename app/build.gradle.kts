@@ -16,7 +16,7 @@ val localProperties = Properties().apply {
 
 android {
     namespace = "com.example.arlo"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.arlo"
@@ -32,6 +32,12 @@ android {
             ?: System.getenv("ANTHROPIC_API_KEY")
             ?: ""
         buildConfigField("String", "ANTHROPIC_API_KEY", "\"$apiKey\"")
+
+        // Kokoro TTS server URL from local.properties
+        val kokoroUrl = localProperties.getProperty("KOKORO_SERVER_URL")
+            ?: System.getenv("KOKORO_SERVER_URL")
+            ?: ""
+        buildConfigField("String", "KOKORO_SERVER_URL", "\"$kokoroUrl\"")
     }
 
     buildTypes {
@@ -90,6 +96,9 @@ dependencies {
 
     // Image Loading
     implementation(libs.coil)
+
+    // ExoPlayer (for Kokoro TTS audio playback)
+    implementation("androidx.media3:media3-exoplayer:1.5.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

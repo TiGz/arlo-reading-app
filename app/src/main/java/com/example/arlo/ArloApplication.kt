@@ -3,6 +3,8 @@ package com.example.arlo
 import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
@@ -10,7 +12,11 @@ import com.example.arlo.data.AppDatabase
 import com.example.arlo.data.BookRepository
 import com.example.arlo.ml.ClaudeOCRService
 import com.example.arlo.ocr.OCRQueueManager
+import com.example.arlo.speech.SpeechSetupManager
+import com.example.arlo.tts.TTSCacheManager
+import com.example.arlo.tts.TTSPreferences
 import com.example.arlo.tts.TTSService
+import java.util.concurrent.Executors
 
 class ArloApplication : Application() {
     val database by lazy { AppDatabase.getDatabase(this) }
@@ -20,13 +26,19 @@ class ArloApplication : Application() {
     lateinit var ttsService: TTSService
         private set
 
+    // TTS cache manager for pre-caching audio after OCR
+    val ttsCacheManager by lazy {
+        TTSCacheManager(this, ttsService, TTSPreferences(this))
+    }
+
     // OCR Queue manager for background processing
     val ocrQueueManager by lazy {
         OCRQueueManager(
             this,
             database.bookDao(),
             ClaudeOCRService(this),
-            ApiKeyManager(this)
+            ApiKeyManager(this),
+            ttsCacheManager
         )
     }
 
@@ -36,6 +48,9 @@ class ArloApplication : Application() {
     var isSpeechRecognitionAvailable: Boolean = false
         private set
 
+    private val backgroundExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     override fun onCreate() {
         super.onCreate()
         Log.d("ArloApplication", "Application onCreate - initializing TTS")
@@ -43,10 +58,15 @@ class ArloApplication : Application() {
         ttsService = TTSService(this)
 
         // Initialize OCR queue to process any pending pages from previous session
-        ocrQueueManager.startProcessingIfNeeded()
+        // Run on background thread to avoid blocking UI
+        backgroundExecutor.execute {
+            ocrQueueManager.startProcessingIfNeeded()
+        }
 
-        // Run speech recognition diagnostics
-        checkSpeechRecognitionAvailability()
+        // Run speech recognition diagnostics on background thread
+        backgroundExecutor.execute {
+            checkSpeechRecognitionAvailability()
+        }
     }
 
     override fun onTerminate() {
@@ -55,8 +75,18 @@ class ArloApplication : Application() {
     }
 
     private fun checkSpeechRecognitionAvailability() {
-        val diagnostics = StringBuilder()
         val tag = "SpeechRecognition"
+
+        // Skip diagnostics if speech setup has already been completed or skipped
+        val setupManager = SpeechSetupManager(this)
+        if (setupManager.isSetupComplete() || setupManager.isSetupSkipped()) {
+            Log.d(tag, "Speech setup already complete/skipped - using cached availability: true")
+            isSpeechRecognitionAvailable = true
+            speechRecognitionDiagnostics = "Setup previously completed"
+            return
+        }
+
+        val diagnostics = StringBuilder()
 
         Log.d(tag, "========== SPEECH RECOGNITION DIAGNOSTICS ==========")
 
@@ -123,24 +153,10 @@ class ArloApplication : Application() {
         diagnostics.appendLine("Device: $manufacturer $model")
         diagnostics.appendLine("SDK: $sdkVersion")
 
-        // Check 6: Try to create a SpeechRecognizer and see if it works
-        Log.d(tag, "Attempting to create SpeechRecognizer...")
-        var recognizerCreated = false
-        try {
-            val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
-            if (recognizer != null) {
-                Log.d(tag, "SpeechRecognizer created successfully")
-                diagnostics.appendLine("SpeechRecognizer creation: SUCCESS")
-                recognizerCreated = true
-                recognizer.destroy()
-            } else {
-                Log.d(tag, "SpeechRecognizer.createSpeechRecognizer returned null")
-                diagnostics.appendLine("SpeechRecognizer creation: NULL")
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to create SpeechRecognizer: ${e.message}")
-            diagnostics.appendLine("SpeechRecognizer creation: FAILED - ${e.message}")
-        }
+        // Check 6: Skip SpeechRecognizer creation test (requires main thread, not critical)
+        // We rely on isAvailable and hasGoogleSpeechActivity instead
+        val recognizerCreated = false
+        diagnostics.appendLine("SpeechRecognizer creation: SKIPPED (background thread)")
 
         Log.d(tag, "========== END DIAGNOSTICS ==========")
 
