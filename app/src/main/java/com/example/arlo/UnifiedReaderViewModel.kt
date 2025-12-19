@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.arlo.data.Book
 import com.example.arlo.data.Page
 import com.example.arlo.data.SentenceData
+import com.example.arlo.data.SessionStats
 import com.example.arlo.tts.TTSPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -112,7 +113,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val micLevel: Int = 0,  // 0-100 mic input level for visual feedback
         val isSpeakingTargetWord: Boolean = false,  // True when TTS is reading target word after failures
         // Kid mode - locks collaborative mode ON and hides toggle button
-        val kidMode: Boolean = true  // Default ON - kids can't turn off collaborative mode
+        val kidMode: Boolean = true,  // Default ON - kids can't turn off collaborative mode
+        // Gamification stats for current session
+        val sessionStats: SessionStats = SessionStats(),
+        val totalStars: Int = 0,  // Lifetime star count (loaded from DB)
+        val chapterTitle: String? = null  // Current chapter title if available
     ) {
         val currentPage: Page? get() = pages.getOrNull(currentPageIndex)
         val currentSentence: SentenceData? get() = sentences.getOrNull(currentSentenceIndex)
@@ -971,26 +976,39 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             // Find where target word starts in the cached audio
             val firstTargetWord = targetWords.split(" ").first()
-            val stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
+            var stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
+
+            // Cache miss - pre-cache the sentence first, then find timestamp
+            if (stopAtMs == null) {
+                Log.d(TAG, "Collaborative: cache miss, pre-caching sentence first")
+                try {
+                    val kokoroVoice = ttsService.getKokoroVoice()
+                    val result = ttsService.synthesizeKokoroForCache(sentence.text, kokoroVoice)
+                    ttsCacheManager.saveToCache(sentence.text, result.audioBytes, result.timestampsJson)
+                    // Now find the timestamp in the freshly cached audio
+                    stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to pre-cache sentence: ${e.message}")
+                }
+            }
 
             if (stopAtMs != null) {
-                // Cache hit - play full sentence audio but stop at target word
+                // Play sentence audio but stop at target word
                 Log.d(TAG, "Collaborative: playing until ${stopAtMs}ms (before '$firstTargetWord')")
                 ttsService.speakWithKokoroUntil(sentence.text, ttsCacheManager, stopAtMs) {
                     _state.value = _state.value.copy(highlightRange = null)
                     onPartialTTSComplete(targetWords)
                 }
             } else {
-                // Cache miss - fetch full sentence, find timestamp, play partial
-                // speakWithKokoroUntil handles this internally but we need to find the timestamp first
-                // For now, fallback to speaking the partial text directly (will be cached as partial)
-                Log.d(TAG, "Collaborative: cache miss, fetching full sentence first")
+                // Fallback: couldn't find timestamp even after caching - play full and skip collaboration
+                Log.w(TAG, "Collaborative: couldn't find timestamp for '$firstTargetWord', playing full sentence")
                 ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
-                    // Full sentence now cached - but we played it all
-                    // On next sentence, cache will hit properly
-                    // TODO: Could retry with partial playback here, but user already heard it
                     _state.value = _state.value.copy(highlightRange = null)
-                    onPartialTTSComplete(targetWords)
+                    // Skip collaboration - auto-advance to next sentence
+                    if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                        nextSentence()
+                        speakCurrentSentenceCollaborative()
+                    }
                 }
             }
         }

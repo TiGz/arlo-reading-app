@@ -60,6 +60,13 @@
     <color name="info_background">#E3F2FD</color>
     <color name="info_text">#0097A7</color>
 
+    <!-- Collaborative Feedback Panel -->
+    <color name="collab_idle_text">#7B1FA2</color>
+    <color name="collab_listening_text">#388E3C</color>
+    <color name="collab_success_text">#2E7D32</color>
+    <color name="collab_retry_text">#F57C00</color>
+    <color name="collab_dot_inactive">#E0E0E0</color>
+
     <!-- Reader Screen -->
     <color name="reader_background">#FAFBFC</color>
     <color name="reader_controls_background">#FFFFFF</color>

@@ -94,7 +94,11 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb shell pm dump com.google.android.googlequicksearchbox)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell dumpsys package com.google.android.googlequicksearchbox)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell pm revoke com.google.android.googlequicksearchbox android.permission.RECORD_AUDIO)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd animated word highlighting and Google app permission checks\n\n- Add AnimatedSentenceView with FlexboxLayout for word-by-word display\n- Words grow 8% + turn purple during TTS, shrink back on next word\n- Check Google app mic permission for speech recognition on Fire tablets\n- Add preservePlayingState for seamless page transitions during playback\n- Fix ERROR_CLIENT noise when user cancels speech recognition\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell am force-stop com.example.arlo)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell monkey -p com.example.arlo -c android.intent.category.LAUNCHER 1)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -s \"UnifiedReader\" \"VoiceWave\")"
     ],
     "deny": [],
     "ask": []

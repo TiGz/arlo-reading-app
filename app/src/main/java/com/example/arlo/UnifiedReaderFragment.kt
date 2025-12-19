@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
 import com.example.arlo.ui.WordHighlightState
+import com.example.arlo.ui.VoiceWaveView
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -118,6 +119,21 @@ class UnifiedReaderFragment : Fragment() {
             showSpeedPicker()
         }
 
+        // Stats button opens the reading dashboard
+        binding.btnStats.setOnClickListener {
+            showStatsDashboard()
+        }
+
+        // Settings button shows voice/speed/auto-advance options
+        binding.btnSettings.setOnClickListener {
+            showSettingsMenu()
+        }
+
+        // Score container also opens stats
+        binding.scoreContainer.setOnClickListener {
+            showStatsDashboard()
+        }
+
         binding.btnAddPage.setOnClickListener {
             viewModel.stopReading()
             if (bookId != -1L) {
@@ -181,6 +197,29 @@ class UnifiedReaderFragment : Fragment() {
         // Book title
         state.book?.let { book ->
             binding.tvBookTitle.text = book.title
+        }
+
+        // Chapter title (if available)
+        val chapterTitle = state.chapterTitle ?: state.currentPage?.chapterTitle
+        if (chapterTitle != null) {
+            binding.tvChapterTitle.text = chapterTitle
+            binding.tvChapterTitle.visibility = View.VISIBLE
+        } else {
+            binding.tvChapterTitle.visibility = View.GONE
+        }
+
+        // Gamification UI - Stars and Streak
+        val totalStars = state.totalStars + state.sessionStats.sessionStars
+        binding.tvStarCount.text = totalStars.toString()
+
+        val currentStreak = state.sessionStats.currentStreak
+        if (currentStreak >= 3) {
+            binding.ivStreakFire.visibility = View.VISIBLE
+            binding.tvStreakCount.visibility = View.VISIBLE
+            binding.tvStreakCount.text = "x$currentStreak"
+        } else {
+            binding.ivStreakFire.visibility = View.GONE
+            binding.tvStreakCount.visibility = View.GONE
         }
 
         // Page indicator
@@ -305,8 +344,14 @@ class UnifiedReaderFragment : Fragment() {
     }
 
     private fun updateCollaborativeIndicator(state: UnifiedReaderViewModel.ReaderState) {
+        // Show/hide the reserved space based on collaborative mode
+        // Space is INVISIBLE (takes space) when collaborative mode is on
+        // Space is GONE (no space) when collaborative mode is off
+        binding.collaborativeFeedbackSpace.visibility = if (state.collaborativeMode) View.INVISIBLE else View.GONE
+
         if (!state.collaborativeMode) {
-            binding.collaborativeIndicator.visibility = View.GONE
+            binding.collaborativeFeedbackPanel.visibility = View.GONE
+            binding.voiceWaveView.stopAnimation()
             binding.btnCollaborative.tooltipText = "Collaborative reading: OFF"
             binding.btnCollaborative.alpha = 0.6f
             return
@@ -316,54 +361,99 @@ class UnifiedReaderFragment : Fragment() {
         binding.btnCollaborative.tooltipText = "Collaborative reading: ON"
         binding.btnCollaborative.alpha = 1.0f
 
+        // Update attempt dots based on current attempt count
+        updateAttemptDots(state.attemptCount, state.lastAttemptSuccess)
+
         // Show indicator based on collaborative state
         when (state.collaborativeState) {
             UnifiedReaderViewModel.CollaborativeState.IDLE -> {
-                binding.micLevelIndicator.visibility = View.GONE
+                binding.voiceWaveView.stopAnimation()
                 if (state.targetWord != null) {
-                    binding.collaborativeIndicator.visibility = View.VISIBLE
+                    binding.collaborativeFeedbackPanel.visibility = View.VISIBLE
+                    binding.collaborativeFeedbackPanel.setBackgroundResource(R.drawable.bg_collaborative_panel)
                     binding.tvCollaborativeStatus.text = "Your turn!"
-                    binding.ivMicIndicator.setColorFilter(
-                        ContextCompat.getColor(requireContext(), R.color.primary)
+                    binding.tvCollaborativeStatus.setTextColor(
+                        ContextCompat.getColor(requireContext(), R.color.collab_idle_text)
                     )
+                    binding.ivMicIndicator.setColorFilter(
+                        ContextCompat.getColor(requireContext(), R.color.collab_idle_text)
+                    )
+                    binding.voiceWaveView.setColorState(VoiceWaveView.ColorState.IDLE)
+                    binding.voiceWaveView.setMicLevel(15) // Subtle idle wave
+                    binding.voiceWaveView.startAnimation()
+                    binding.attemptDotsContainer.visibility = View.VISIBLE
                 } else {
-                    binding.collaborativeIndicator.visibility = View.GONE
+                    binding.collaborativeFeedbackPanel.visibility = View.GONE
                 }
             }
             UnifiedReaderViewModel.CollaborativeState.LISTENING -> {
-                binding.collaborativeIndicator.visibility = View.VISIBLE
-                val attemptNum = state.attemptCount + 1
-                binding.tvCollaborativeStatus.text = if (attemptNum > 1) {
-                    "Listening... ($attemptNum of 3)"
-                } else {
-                    "Listening..."
-                }
-                binding.ivMicIndicator.setColorFilter(
-                    ContextCompat.getColor(requireContext(), R.color.success)
+                binding.collaborativeFeedbackPanel.visibility = View.VISIBLE
+                binding.collaborativeFeedbackPanel.setBackgroundResource(R.drawable.bg_collaborative_listening)
+                binding.tvCollaborativeStatus.text = "Listening..."
+                binding.tvCollaborativeStatus.setTextColor(
+                    ContextCompat.getColor(requireContext(), R.color.collab_listening_text)
                 )
-                binding.micLevelIndicator.visibility = View.VISIBLE
-                binding.micLevelIndicator.progress = state.micLevel
+                binding.ivMicIndicator.setColorFilter(
+                    ContextCompat.getColor(requireContext(), R.color.collab_listening_text)
+                )
+                binding.voiceWaveView.setColorState(VoiceWaveView.ColorState.LISTENING)
+                binding.voiceWaveView.setMicLevel(state.micLevel)
+                binding.voiceWaveView.startAnimation()
+                binding.attemptDotsContainer.visibility = View.VISIBLE
             }
             UnifiedReaderViewModel.CollaborativeState.FEEDBACK -> {
-                binding.collaborativeIndicator.visibility = View.VISIBLE
-                binding.micLevelIndicator.visibility = View.GONE
+                binding.collaborativeFeedbackPanel.visibility = View.VISIBLE
                 if (state.lastAttemptSuccess == true) {
+                    binding.collaborativeFeedbackPanel.setBackgroundResource(R.drawable.bg_collaborative_success)
                     binding.tvCollaborativeStatus.text = "Correct!"
-                    binding.ivMicIndicator.setColorFilter(
-                        ContextCompat.getColor(requireContext(), R.color.success)
+                    binding.tvCollaborativeStatus.setTextColor(
+                        ContextCompat.getColor(requireContext(), R.color.collab_success_text)
                     )
+                    binding.ivMicIndicator.setColorFilter(
+                        ContextCompat.getColor(requireContext(), R.color.collab_success_text)
+                    )
+                    binding.voiceWaveView.setColorState(VoiceWaveView.ColorState.SUCCESS)
+                    binding.voiceWaveView.setMicLevel(80) // Celebratory wave
+                    binding.voiceWaveView.startAnimation()
+                    // Hide dots on success - they did it!
+                    binding.attemptDotsContainer.visibility = View.GONE
                 } else {
+                    binding.collaborativeFeedbackPanel.setBackgroundResource(R.drawable.bg_collaborative_retry)
                     val attemptsLeft = 3 - state.attemptCount
                     binding.tvCollaborativeStatus.text = if (attemptsLeft > 0) {
-                        "Try again ($attemptsLeft left)"
+                        "Try again!"
                     } else {
                         "Listen..."
                     }
-                    binding.ivMicIndicator.setColorFilter(
-                        ContextCompat.getColor(requireContext(), R.color.error)
+                    binding.tvCollaborativeStatus.setTextColor(
+                        ContextCompat.getColor(requireContext(), R.color.collab_retry_text)
                     )
+                    binding.ivMicIndicator.setColorFilter(
+                        ContextCompat.getColor(requireContext(), R.color.collab_retry_text)
+                    )
+                    binding.voiceWaveView.setColorState(VoiceWaveView.ColorState.ERROR)
+                    binding.voiceWaveView.setMicLevel(30) // Subdued wave
+                    binding.voiceWaveView.startAnimation()
+                    binding.attemptDotsContainer.visibility = View.VISIBLE
                 }
             }
+        }
+    }
+
+    /**
+     * Update the attempt dots to show current progress.
+     * Filled dots = attempts used, empty dots = remaining attempts.
+     */
+    private fun updateAttemptDots(attemptCount: Int, lastSuccess: Boolean?) {
+        val dots = listOf(binding.attemptDot1, binding.attemptDot2, binding.attemptDot3)
+
+        dots.forEachIndexed { index, dot ->
+            val bgRes = when {
+                lastSuccess == true && index < attemptCount -> R.drawable.bg_attempt_dot_success
+                index < attemptCount -> R.drawable.bg_attempt_dot_active
+                else -> R.drawable.bg_attempt_dot_inactive
+            }
+            dot.setBackgroundResource(bgRes)
         }
     }
 
@@ -684,6 +774,59 @@ class UnifiedReaderFragment : Fragment() {
 
     private fun formatSpeedLabel(rate: Float): String {
         return String.format("%.2fx", rate)
+    }
+
+    /**
+     * Show settings menu with voice, speed, and auto-advance options.
+     */
+    private fun showSettingsMenu() {
+        val state = viewModel.state.value
+        val autoAdvanceText = if (state.autoAdvance) "Auto-advance: ON" else "Auto-advance: OFF"
+
+        val options = arrayOf(
+            "Change Voice",
+            "Reading Speed",
+            autoAdvanceText
+        )
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Reading Settings")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showVoicePicker()
+                    1 -> showSpeedPicker()
+                    2 -> viewModel.toggleAutoAdvance()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /**
+     * Show the reading stats dashboard.
+     * TODO: Replace with full stats fragment when implemented.
+     */
+    private fun showStatsDashboard() {
+        // For now, show a simple dialog with stats summary
+        val totalStars = viewModel.state.value.sessionStats.sessionStars
+        val streak = viewModel.state.value.sessionStats.currentStreak
+        val perfectWords = viewModel.state.value.sessionStats.sessionPerfectWords
+
+        val message = buildString {
+            appendLine("Session Stats")
+            appendLine()
+            appendLine("⭐ Stars earned: $totalStars")
+            appendLine("🔥 Current streak: $streak")
+            appendLine("✅ Perfect words: $perfectWords")
+            appendLine()
+            appendLine("Full stats dashboard coming soon!")
+        }
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Your Progress")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     /**
