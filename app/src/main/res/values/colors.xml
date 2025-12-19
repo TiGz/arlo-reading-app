@@ -6,6 +6,7 @@
 
     <!-- Primary - Bright Teal (energy & focus) -->
     <color name="primary">#00BCD4</color>
+    <color name="teal_primary">#00BCD4</color>
     <color name="primary_dark">#0097A7</color>
     <color name="primary_light">#4DD0E1</color>
     <color name="on_primary">#FFFFFF</color>

@@ -10,6 +10,7 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import com.example.arlo.data.AppDatabase
 import com.example.arlo.data.BookRepository
+import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.ml.ClaudeOCRService
 import com.example.arlo.ocr.OCRQueueManager
 import com.example.arlo.speech.SpeechSetupManager
@@ -21,6 +22,7 @@ import java.util.concurrent.Executors
 class ArloApplication : Application() {
     val database by lazy { AppDatabase.getDatabase(this) }
     val repository by lazy { BookRepository(database.bookDao()) }
+    val statsRepository by lazy { ReadingStatsRepository(database.readingStatsDao()) }
 
     // TTS is initialized eagerly so it's ready when needed
     lateinit var ttsService: TTSService

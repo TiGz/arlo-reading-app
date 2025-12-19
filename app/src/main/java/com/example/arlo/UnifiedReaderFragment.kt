@@ -6,6 +6,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
+import android.view.animation.AnimationUtils
 import com.example.arlo.ui.WordHighlightState
 import com.example.arlo.ui.VoiceWaveView
 import android.view.LayoutInflater
@@ -42,6 +43,10 @@ class UnifiedReaderFragment : Fragment() {
     private var lastSecretTapTime = 0L
     private val SECRET_TAP_TIMEOUT_MS = 2000L  // Reset if more than 2s between taps
     private val SECRET_TAP_COUNT_REQUIRED = 5
+
+    // Track previous values for animation triggers
+    private var lastStarCount = 0
+    private var lastStreakCount = 0
 
     // Permission launcher for RECORD_AUDIO
     private val requestAudioPermission = registerForActivityResult(
@@ -212,15 +217,29 @@ class UnifiedReaderFragment : Fragment() {
         val totalStars = state.totalStars + state.sessionStats.sessionStars
         binding.tvStarCount.text = totalStars.toString()
 
+        // Animate star burst when stars increase
+        if (totalStars > lastStarCount && lastStarCount > 0) {
+            val starBurst = AnimationUtils.loadAnimation(requireContext(), R.anim.star_burst)
+            binding.scoreContainer.startAnimation(starBurst)
+        }
+        lastStarCount = totalStars
+
         val currentStreak = state.sessionStats.currentStreak
         if (currentStreak >= 3) {
             binding.ivStreakFire.visibility = View.VISIBLE
             binding.tvStreakCount.visibility = View.VISIBLE
             binding.tvStreakCount.text = "x$currentStreak"
+
+            // Animate fire pulse when streak increases at milestone (3, 5, 10)
+            if (currentStreak > lastStreakCount && currentStreak in listOf(3, 5, 10)) {
+                val firePulse = AnimationUtils.loadAnimation(requireContext(), R.anim.streak_fire_pulse)
+                binding.ivStreakFire.startAnimation(firePulse)
+            }
         } else {
             binding.ivStreakFire.visibility = View.GONE
             binding.tvStreakCount.visibility = View.GONE
         }
+        lastStreakCount = currentStreak
 
         // Page indicator
         if (state.totalPages > 0) {
@@ -804,29 +823,13 @@ class UnifiedReaderFragment : Fragment() {
 
     /**
      * Show the reading stats dashboard.
-     * TODO: Replace with full stats fragment when implemented.
      */
     private fun showStatsDashboard() {
-        // For now, show a simple dialog with stats summary
-        val totalStars = viewModel.state.value.sessionStats.sessionStars
-        val streak = viewModel.state.value.sessionStats.currentStreak
-        val perfectWords = viewModel.state.value.sessionStats.sessionPerfectWords
-
-        val message = buildString {
-            appendLine("Session Stats")
-            appendLine()
-            appendLine("⭐ Stars earned: $totalStars")
-            appendLine("🔥 Current streak: $streak")
-            appendLine("✅ Perfect words: $perfectWords")
-            appendLine()
-            appendLine("Full stats dashboard coming soon!")
-        }
-
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Your Progress")
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
+        viewModel.stopReading()
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, StatsDashboardFragment.newInstance())
+            .addToBackStack(null)
+            .commit()
     }
 
     /**

@@ -14,6 +14,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.arlo.data.Book
 import com.example.arlo.data.Page
+import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.data.SentenceData
 import com.example.arlo.data.SessionStats
 import com.example.arlo.tts.TTSPreferences
@@ -41,6 +42,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     }
 
     private val repository = (application as ArloApplication).repository
+    private val statsRepository = (application as ArloApplication).statsRepository
     val ttsService = (application as ArloApplication).ttsService
     private val ttsCacheManager = (application as ArloApplication).ttsCacheManager
     private val ttsPreferences = TTSPreferences(application)
@@ -198,6 +200,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
             // Observe pending page count
             observePendingPages()
+
+            // Load total stars and observe stats
+            loadAndObserveStats()
         }
     }
 
@@ -205,6 +210,22 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             repository.getPendingPageCount(bookId).collect { count ->
                 _state.value = _state.value.copy(pendingPageCount = count)
+            }
+        }
+    }
+
+    /**
+     * Load initial total stars and observe ongoing changes.
+     */
+    private fun loadAndObserveStats() {
+        viewModelScope.launch {
+            // Load initial total stars
+            val totalStars = withContext(Dispatchers.IO) { statsRepository.getTotalStars() }
+            _state.value = _state.value.copy(totalStars = totalStars)
+
+            // Observe total stars for real-time updates
+            statsRepository.observeTotalStars().collect { stars ->
+                _state.value = _state.value.copy(totalStars = stars ?: 0)
             }
         }
     }
@@ -1251,6 +1272,35 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         if (isMatch) {
             // Success!
             playSuccessSound()
+
+            // Record the attempt and update stats
+            val currentStreak = current.sessionStats.currentStreak
+            val isFirstTry = newAttemptCount == 1
+
+            viewModelScope.launch(Dispatchers.IO) {
+                val pageId = current.currentPage?.id ?: 0L
+                val starsEarned = statsRepository.recordCollaborativeAttempt(
+                    bookId = bookId,
+                    pageId = pageId,
+                    targetWord = targetWord,
+                    spokenWord = results.firstOrNull(),
+                    isCorrect = true,
+                    attemptNumber = newAttemptCount,
+                    currentStreak = currentStreak
+                )
+
+                // Update session stats on main thread
+                withContext(Dispatchers.Main) {
+                    val newStreak = currentStreak + 1
+                    val sessionStats = current.sessionStats.copy(
+                        currentStreak = newStreak,
+                        sessionPerfectWords = if (isFirstTry) current.sessionStats.sessionPerfectWords + 1 else current.sessionStats.sessionPerfectWords,
+                        sessionStars = current.sessionStats.sessionStars + starsEarned
+                    )
+                    _state.value = _state.value.copy(sessionStats = sessionStats)
+                }
+            }
+
             _state.value = current.copy(
                 collaborativeState = CollaborativeState.FEEDBACK,
                 lastAttemptSuccess = true,
@@ -1279,7 +1329,26 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 }
             }
         } else {
-            // Failure
+            // Failure - record attempt and reset streak
+            viewModelScope.launch(Dispatchers.IO) {
+                val pageId = current.currentPage?.id ?: 0L
+                statsRepository.recordCollaborativeAttempt(
+                    bookId = bookId,
+                    pageId = pageId,
+                    targetWord = targetWord,
+                    spokenWord = results.firstOrNull(),
+                    isCorrect = false,
+                    attemptNumber = newAttemptCount,
+                    currentStreak = current.sessionStats.currentStreak
+                )
+
+                // Reset streak on failure
+                withContext(Dispatchers.Main) {
+                    val sessionStats = current.sessionStats.copy(currentStreak = 0)
+                    _state.value = _state.value.copy(sessionStats = sessionStats)
+                }
+            }
+
             playErrorSound()
             _state.value = current.copy(
                 collaborativeState = CollaborativeState.FEEDBACK,
