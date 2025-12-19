@@ -13,33 +13,33 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Frozen preview (shown immediately on capture to freeze the view) -->
+    <!-- Frozen preview -->
     <ImageView
         android:id="@+id/ivFrozenPreview"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:contentDescription="Captured preview"
         android:scaleType="centerCrop"
-        android:visibility="gone"
-        android:contentDescription="Captured preview" />
+        android:visibility="gone" />
 
-    <!-- Top gradient overlay for text visibility -->
+    <!-- Top gradient overlay -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="120dp"
+        android:layout_height="140dp"
         android:background="@drawable/bg_camera_overlay"
         android:rotation="180"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Back button -->
+    <!-- Back button - Larger touch target -->
     <ImageButton
         android:id="@+id/btnBack"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="12dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="Go back"
-        android:padding="12dp"
+        android:padding="14dp"
         android:src="@drawable/ic_arrow_back"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -48,13 +48,13 @@
     <!-- Review Pages button -->
     <ImageButton
         android:id="@+id/btnReviewPages"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginTop="8dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="12dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="Review captured pages"
-        android:padding="12dp"
+        android:padding="14dp"
         android:src="@drawable/ic_pages"
         android:tooltipText="Review Pages"
         android:visibility="gone"
@@ -63,18 +63,18 @@
         app:tint="@color/white"
         tools:visibility="visible" />
 
-    <!-- Instruction Card at top -->
+    <!-- Instruction Card - Vibrant teal border -->
     <LinearLayout
         android:id="@+id/instructionCard"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="12dp"
         android:background="@drawable/bg_instruction_card"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingHorizontal="24dp"
-        android:paddingVertical="20dp"
+        android:paddingHorizontal="28dp"
+        android:paddingVertical="24dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnBack">
@@ -83,43 +83,44 @@
             android:id="@+id/tvInstructionTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="serif"
+            android:fontFamily="sans-serif-medium"
             android:text="Step 1"
-            android:textColor="@color/text_hint"
-            android:textSize="12sp"
+            android:textColor="@color/primary"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvInstruction"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:fontFamily="serif"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif-medium"
             android:gravity="center"
             android:text="Take a photo of the cover"
             android:textColor="@color/text_primary"
-            android:textSize="20sp"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvInstructionHint"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif"
             android:gravity="center"
             android:text="This will be used as your book's thumbnail"
             android:textColor="@color/text_secondary"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
     </LinearLayout>
 
-    <!-- Speaker indicator (shows when TTS is speaking) -->
+    <!-- Speaker indicator -->
     <ImageView
         android:id="@+id/ivSpeaker"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_marginEnd="16dp"
-        android:alpha="0.8"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginEnd="20dp"
+        android:alpha="0.9"
         android:contentDescription="Audio playing"
         android:src="@drawable/ic_play"
         android:visibility="gone"
@@ -132,43 +133,44 @@
     <!-- Bottom gradient overlay -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="180dp"
+        android:layout_height="200dp"
         android:background="@drawable/bg_camera_overlay"
         app:layout_constraintBottom_toBottomOf="parent" />
 
-    <!-- Capture button - Large and prominent -->
+    <!-- Capture button - Extra large coral button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/imageCaptureButton"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
-        android:layout_marginBottom="48dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="56dp"
         android:contentDescription="Capture photo"
         android:src="@drawable/ic_camera"
         android:tooltipText="Capture photo"
-        app:backgroundTint="@color/white"
-        app:fabCustomSize="72dp"
+        app:backgroundTint="@color/secondary"
+        app:fabCustomSize="80dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:maxImageSize="32dp"
-        app:tint="@color/primary" />
+        app:maxImageSize="36dp"
+        app:tint="@color/white" />
 
-    <!-- Skip button (for adding pages, skip to library) -->
+    <!-- Skip/Done button -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnSkip"
         style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
+        android:layout_marginEnd="20dp"
         android:text="Done"
         android:textColor="@color/white"
+        android:textSize="16sp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/imageCaptureButton"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/imageCaptureButton"
         tools:visibility="visible" />
 
-    <!-- Preview Container (shown after capture, before processing) -->
+    <!-- Preview Container -->
     <FrameLayout
         android:id="@+id/previewContainer"
         android:layout_width="match_parent"
@@ -181,42 +183,43 @@
             android:id="@+id/ivPreview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="fitCenter"
-            android:contentDescription="Captured image preview" />
+            android:contentDescription="Captured image preview"
+            android:scaleType="fitCenter" />
 
-        <!-- Preview instruction card at top -->
+        <!-- Preview instruction card -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="24dp"
-            android:layout_marginTop="72dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="80dp"
             android:background="@drawable/bg_instruction_card"
             android:gravity="center"
             android:orientation="vertical"
-            android:paddingHorizontal="24dp"
-            android:paddingVertical="16dp">
+            android:paddingHorizontal="28dp"
+            android:paddingVertical="20dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="serif"
+                android:fontFamily="sans-serif-medium"
                 android:text="Review Photo"
                 android:textColor="@color/text_primary"
-                android:textSize="18sp"
+                android:textSize="20sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="6dp"
+                android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:text="Make sure the text is clear and readable"
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="14sp" />
 
         </LinearLayout>
 
-        <!-- Preview action buttons at bottom -->
+        <!-- Preview action buttons -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -224,48 +227,49 @@
             android:background="@drawable/bg_camera_overlay"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingHorizontal="24dp"
-            android:paddingTop="32dp"
-            android:paddingBottom="48dp">
+            android:paddingHorizontal="20dp"
+            android:paddingTop="40dp"
+            android:paddingBottom="56dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRetake"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
+                android:layout_height="60dp"
                 android:layout_marginEnd="8dp"
+                android:layout_weight="1"
                 android:text="Retake"
                 android:textColor="@color/white"
+                android:textSize="16sp"
+                app:cornerRadius="16dp"
                 app:strokeColor="@color/white"
-                app:cornerRadius="12dp" />
+                app:strokeWidth="2dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnProcessWithAI"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
+                android:layout_height="60dp"
                 android:layout_marginStart="8dp"
+                android:layout_weight="1"
                 android:text="Process with AI"
                 android:textColor="@color/primary"
+                android:textSize="16sp"
                 app:backgroundTint="@color/white"
-                app:cornerRadius="12dp" />
+                app:cornerRadius="16dp" />
 
         </LinearLayout>
 
     </FrameLayout>
 
-    <!-- Queue status chip (shows pending pages) -->
+    <!-- Queue status chip - Teal colored -->
     <com.google.android.material.chip.Chip
         android:id="@+id/chipQueueStatus"
+        style="@style/ArloChip"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
+        android:layout_marginStart="20dp"
         android:layout_marginBottom="16dp"
-        android:textColor="@color/white"
         android:visibility="gone"
-        app:chipBackgroundColor="@color/primary"
-        app:chipCornerRadius="16dp"
         app:layout_constraintBottom_toTopOf="@id/imageCaptureButton"
         app:layout_constraintStart_toStartOf="parent"
         tools:text="2 pages processing..."
@@ -290,18 +294,19 @@
             android:orientation="vertical">
 
             <ProgressBar
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:indeterminateTint="@color/white" />
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:indeterminateTint="@color/primary" />
 
             <TextView
                 android:id="@+id/tvLoadingText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="20dp"
+                android:fontFamily="sans-serif"
                 android:text="Processing..."
                 android:textColor="@color/white"
-                android:textSize="16sp" />
+                android:textSize="18sp" />
 
         </LinearLayout>
 

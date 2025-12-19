@@ -50,11 +50,11 @@ class LibraryFragment : Fragment() {
             binding.emptyState.visibility = if (booksWithInfo.isEmpty()) View.VISIBLE else View.GONE
             binding.recyclerView.visibility = if (booksWithInfo.isEmpty()) View.GONE else View.VISIBLE
 
-            // Update subtitle with book count
+            // Update subtitle with fun, encouraging message
             binding.tvSubtitle.text = when (booksWithInfo.size) {
-                0 -> "Your captured books"
-                1 -> "1 book in your collection"
-                else -> "${booksWithInfo.size} books in your collection"
+                0 -> "Your reading adventures await!"
+                1 -> "1 awesome book ready to read!"
+                else -> "${booksWithInfo.size} books in your adventure!"
             }
         }
 

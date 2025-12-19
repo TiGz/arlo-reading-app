@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Background gradient -->
+    <!-- Vibrant gradient background -->
     <item>
         <shape android:shape="rectangle">
             <gradient
                 android:angle="135"
-                android:startColor="@color/primary_light"
-                android:endColor="@color/primary_dark"
+                android:startColor="#4DD0E1"
+                android:centerColor="#00BCD4"
+                android:endColor="#0097A7"
                 android:type="linear"/>
-            <corners android:radius="8dp"/>
+            <corners android:radius="16dp"/>
         </shape>
     </item>
-    <!-- Book icon overlay -->
+    <!-- Book icon overlay (larger, more visible) -->
     <item
         android:gravity="center"
         android:drawable="@drawable/ic_book"
-        android:width="48dp"
-        android:height="48dp"/>
+        android:width="64dp"
+        android:height="64dp"/>
 </layer-list>

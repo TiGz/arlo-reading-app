@@ -7,7 +7,7 @@
     android:background="@color/background"
     tools:context=".LibraryFragment">
 
-    <!-- Header -->
+    <!-- Header with fun greeting -->
     <LinearLayout
         android:id="@+id/header"
         android:layout_width="0dp"
@@ -15,7 +15,7 @@
         android:orientation="vertical"
         android:paddingHorizontal="24dp"
         android:paddingTop="32dp"
-        android:paddingBottom="16dp"
+        android:paddingBottom="20dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -24,18 +24,21 @@
             android:id="@+id/tvTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
             android:text="My Library"
-            android:textAppearance="@style/ArloTextAppearance.Header"
-            android:textSize="32sp" />
+            android:textColor="@color/text_primary"
+            android:textSize="34sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Your captured books"
-            android:textAppearance="@style/ArloTextAppearance.Caption"
-            android:textSize="14sp" />
+            android:fontFamily="sans-serif"
+            android:text="Your reading adventures await!"
+            android:textColor="@color/primary"
+            android:textSize="16sp" />
 
     </LinearLayout>
 
@@ -45,14 +48,14 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:clipToPadding="false"
-        android:paddingHorizontal="16dp"
-        android:paddingBottom="88dp"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="100dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/header" />
 
-    <!-- Empty State -->
+    <!-- Playful Empty State -->
     <LinearLayout
         android:id="@+id/emptyState"
         android:layout_width="wrap_content"
@@ -66,11 +69,10 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/header">
 
-        <!-- Decorative book stack illustration -->
+        <!-- Large colorful book icon -->
         <ImageView
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:alpha="0.4"
+            android:layout_width="140dp"
+            android:layout_height="140dp"
             android:contentDescription="No books"
             android:src="@drawable/ic_book"
             app:tint="@color/primary" />
@@ -79,26 +81,28 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:fontFamily="serif"
-            android:text="Your bookshelf is empty"
+            android:fontFamily="sans-serif-medium"
+            android:text="Let's start reading!"
             android:textColor="@color/text_primary"
-            android:textSize="20sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif"
             android:gravity="center"
-            android:text="Tap the button below to capture\nyour first book cover"
+            android:text="Tap the button below to\ncapture your first book"
             android:textColor="@color/text_secondary"
-            android:textSize="15sp" />
+            android:textSize="16sp" />
 
     </LinearLayout>
 
-    <!-- FAB with extended style -->
+    <!-- Coral FAB for adding books -->
     <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
         android:id="@+id/fabAddBook"
+        style="@style/ArloFabStyle.Extended"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="24dp"

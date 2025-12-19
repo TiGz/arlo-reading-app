@@ -7,12 +7,13 @@
     android:background="@color/reader_background"
     tools:context=".UnifiedReaderFragment">
 
-    <!-- Top Navigation Bar -->
+    <!-- Top Navigation Bar - Teal Accent -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/reader_controls_background"
+        android:background="@color/surface"
+        android:elevation="4dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="8dp"
@@ -21,17 +22,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <!-- Back/Home button -->
+        <!-- Back button -->
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Back to library"
-            android:padding="12dp"
+            android:padding="14dp"
             android:src="@drawable/ic_arrow_back"
             android:tooltipText="Back to library"
-            app:tint="@color/reader_text_secondary" />
+            app:tint="@color/primary" />
 
         <!-- Book title and page indicator -->
         <LinearLayout
@@ -46,10 +47,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="serif"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
-                android:textColor="@color/reader_text_primary"
-                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
                 android:textStyle="bold"
                 tools:text="The Great Gatsby" />
 
@@ -57,8 +58,9 @@
                 android:id="@+id/tvPageIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/reader_text_secondary"
-                android:textSize="12sp"
+                android:fontFamily="sans-serif"
+                android:textColor="@color/primary"
+                android:textSize="13sp"
                 tools:text="Page 3 of 12" />
 
         </LinearLayout>
@@ -99,7 +101,7 @@
             android:tooltipText="Auto-advance: ON"
             app:tint="@color/primary" />
 
-        <!-- Collaborative mode toggle button -->
+        <!-- Collaborative mode toggle - Purple accent -->
         <ImageButton
             android:id="@+id/btnCollaborative"
             android:layout_width="48dp"
@@ -109,7 +111,7 @@
             android:padding="12dp"
             android:src="@drawable/ic_mic"
             android:tooltipText="Collaborative reading: OFF"
-            app:tint="@color/primary" />
+            app:tint="@color/accent_purple" />
 
         <!-- Add page button -->
         <ImageButton
@@ -125,15 +127,17 @@
 
     </LinearLayout>
 
-    <!-- Processing status banner -->
+    <!-- Processing status banner - Info style -->
     <LinearLayout
         android:id="@+id/processingBanner"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/warning_background"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_collaborative_indicator"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="8dp"
+        android:padding="12dp"
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -141,17 +145,18 @@
         tools:visibility="visible">
 
         <ProgressBar
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginEnd="8dp"
-            android:indeterminateTint="@color/warning_text" />
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="12dp"
+            android:indeterminateTint="@color/primary" />
 
         <TextView
             android:id="@+id/tvProcessingStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/warning_text"
-            android:textSize="13sp"
+            android:fontFamily="sans-serif"
+            android:textColor="@color/primary"
+            android:textSize="14sp"
             tools:text="2 pages processing..." />
 
     </LinearLayout>
@@ -172,27 +177,30 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="28dp">
 
+            <!-- Main reading text - Large serif for literacy -->
             <TextView
                 android:id="@+id/tvSentence"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:fontFamily="serif"
                 android:gravity="center"
-                android:lineSpacingMultiplier="1.4"
-                android:textColor="@color/reader_text_primary"
-                android:textSize="28sp"
+                android:lineSpacingMultiplier="1.5"
+                android:textColor="@color/text_primary"
+                android:textSize="30sp"
                 tools:text="The old man walked slowly down the dusty road." />
 
-            <!-- Collaborative mode indicator -->
+            <!-- Collaborative mode indicator - Purple themed -->
             <LinearLayout
                 android:id="@+id/collaborativeIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/bg_collaborative_indicator"
                 android:gravity="center"
                 android:orientation="vertical"
+                android:padding="16dp"
                 android:visibility="gone"
                 tools:visibility="visible">
 
@@ -204,18 +212,19 @@
 
                     <ImageView
                         android:id="@+id/ivMicIndicator"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_marginEnd="8dp"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="12dp"
                         android:src="@drawable/ic_mic"
-                        app:tint="@color/primary" />
+                        app:tint="@color/accent_purple" />
 
                     <TextView
                         android:id="@+id/tvCollaborativeStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textColor="@color/primary"
-                        android:textSize="16sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="@color/accent_purple"
+                        android:textSize="18sp"
                         android:textStyle="bold"
                         tools:text="Your turn!" />
 
@@ -225,12 +234,12 @@
                 <ProgressBar
                     android:id="@+id/micLevelIndicator"
                     style="?android:attr/progressBarStyleHorizontal"
-                    android:layout_width="150dp"
-                    android:layout_height="8dp"
-                    android:layout_marginTop="8dp"
+                    android:layout_width="180dp"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="12dp"
                     android:max="100"
                     android:progress="0"
-                    android:progressTint="@color/primary"
+                    android:progressTint="@color/accent_purple"
                     android:visibility="gone"
                     tools:progress="50"
                     tools:visibility="visible" />
@@ -242,9 +251,10 @@
                 android:id="@+id/tvSentenceIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:textColor="@color/reader_text_secondary"
-                android:textSize="14sp"
+                android:layout_marginTop="28dp"
+                android:fontFamily="sans-serif"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
                 tools:text="Sentence 3 of 7" />
 
         </LinearLayout>
@@ -256,7 +266,9 @@
         android:id="@+id/needMorePagesBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/warning_background"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_collaborative_indicator"
         android:gravity="center"
         android:orientation="vertical"
         android:padding="16dp"
@@ -269,85 +281,88 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
             android:text="Scan more pages to continue reading"
-            android:textColor="@color/warning_text"
+            android:textColor="@color/primary"
             android:textSize="16sp"
             android:textStyle="bold" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnScanMorePages"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+            style="@style/ArloButton.Primary"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="12dp"
             android:text="Add Pages"
-            android:textColor="@color/warning_text" />
+            app:icon="@drawable/ic_camera" />
 
     </LinearLayout>
 
-    <!-- Bottom Controls Panel -->
+    <!-- Bottom Controls Panel - Large friendly buttons -->
     <LinearLayout
         android:id="@+id/bottomControls"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/reader_controls_background"
+        android:background="@drawable/bg_reader_controls"
+        android:elevation="8dp"
         android:gravity="center"
         android:orientation="horizontal"
-        android:paddingHorizontal="32dp"
-        android:paddingVertical="16dp"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="24dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Previous sentence button -->
+        <!-- Previous sentence button - Large touch target -->
         <ImageButton
             android:id="@+id/btnPrevSentence"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Previous sentence"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_chevron_left"
-            app:tint="@color/reader_text_primary" />
-
-        <Space
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <!-- Play/Pause button -->
-        <ImageButton
-            android:id="@+id/btnPlayPause"
             android:layout_width="72dp"
             android:layout_height="72dp"
             android:background="@drawable/bg_play_button"
-            android:contentDescription="Play or pause reading"
+            android:contentDescription="Previous sentence"
             android:padding="16dp"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_play"
-            app:tint="@android:color/white" />
+            android:src="@drawable/ic_chevron_left"
+            app:tint="@color/white" />
 
         <Space
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <!-- Next sentence button -->
+        <!-- Play/Pause button - Extra large coral button -->
+        <ImageButton
+            android:id="@+id/btnPlayPause"
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:background="@drawable/bg_play_button"
+            android:contentDescription="Play or pause reading"
+            android:padding="20dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_play"
+            app:tint="@color/white" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Next sentence button - Large touch target -->
         <ImageButton
             android:id="@+id/btnNextSentence"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:background="@drawable/bg_play_button"
             android:contentDescription="Next sentence"
-            android:padding="12dp"
+            android:padding="16dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_chevron_right"
-            app:tint="@color/reader_text_primary" />
+            app:tint="@color/white" />
 
     </LinearLayout>
 
-    <!-- Empty state (no pages yet) -->
+    <!-- Empty state -->
     <LinearLayout
         android:id="@+id/emptyState"
         android:layout_width="wrap_content"
@@ -363,9 +378,8 @@
         tools:visibility="gone">
 
         <ImageView
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:alpha="0.4"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
             android:contentDescription="No pages"
             android:src="@drawable/ic_book"
             app:tint="@color/primary" />
@@ -373,25 +387,26 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:fontFamily="serif"
+            android:layout_marginTop="20dp"
+            android:fontFamily="sans-serif-medium"
             android:text="No pages yet"
-            android:textColor="@color/reader_text_primary"
-            android:textSize="18sp"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif"
             android:gravity="center"
             android:text="Capture your first page to\nstart reading"
-            android:textColor="@color/reader_text_secondary"
-            android:textSize="14sp" />
+            android:textColor="@color/text_secondary"
+            android:textSize="16sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCaptureFirst"
-            style="@style/ArloButton.Primary"
+            style="@style/ArloButton.Coral"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
@@ -412,7 +427,8 @@
         <ProgressBar
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center" />
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/white" />
 
     </FrameLayout>
 

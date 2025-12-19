@@ -3,14 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/cardBook"
+    style="@style/ArloBookCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
     android:clickable="true"
     android:focusable="true"
-    app:cardBackgroundColor="@color/surface"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="2dp"
     app:rippleColor="@color/ripple">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -30,24 +28,24 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <!-- Progress indicator overlay -->
+        <!-- Colorful Progress Bar -->
         <View
             android:id="@+id/progressOverlay"
             android:layout_width="0dp"
-            android:layout_height="4dp"
-            android:background="@color/secondary"
+            android:layout_height="6dp"
+            android:background="@drawable/bg_progress_gradient"
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="@id/ivBookCover"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             tools:visibility="visible" />
 
-        <!-- Book Info -->
+        <!-- Book Info Panel -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp"
+            android:padding="14dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -58,17 +56,17 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="serif"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="2"
                 android:textColor="@color/text_primary"
-                android:textSize="15sp"
+                android:textSize="16sp"
                 android:textStyle="bold"
                 tools:text="The Great Gatsby" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="6dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -77,16 +75,18 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:textColor="@color/text_hint"
-                    android:textSize="12sp"
+                    android:fontFamily="sans-serif"
+                    android:textColor="@color/primary"
+                    android:textSize="13sp"
                     tools:text="12 pages" />
 
                 <TextView
                     android:id="@+id/tvLastRead"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
                     android:textColor="@color/text_hint"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     tools:text="Page 5" />
 
             </LinearLayout>

@@ -1,13 +1,17 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme - Warm Literary -->
+    <!-- ============================================ -->
+    <!-- ARLO ADVENTURE THEME - Kid-Friendly Design  -->
+    <!-- ============================================ -->
+
+    <!-- Base Theme -->
     <style name="Base.Theme.ArloReadingApp" parent="Theme.Material3.Light.NoActionBar">
-        <!-- Primary Colors -->
+        <!-- Primary Colors - Bright Teal -->
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorPrimaryVariant">@color/primary_light</item>
         <item name="colorOnPrimary">@color/on_primary</item>
 
-        <!-- Secondary Colors -->
+        <!-- Secondary Colors - Vibrant Coral -->
         <item name="colorSecondary">@color/secondary</item>
         <item name="colorSecondaryVariant">@color/secondary_dark</item>
         <item name="colorOnSecondary">@color/on_secondary</item>
@@ -19,7 +23,7 @@
         <item name="colorOnSurface">@color/text_primary</item>
         <item name="colorOnSurfaceVariant">@color/text_secondary</item>
 
-        <!-- Status Bar -->
+        <!-- Status Bar - Teal -->
         <item name="android:statusBarColor">@color/primary_dark</item>
         <item name="android:navigationBarColor">@color/background</item>
         <item name="android:windowLightNavigationBar">true</item>
@@ -30,64 +34,191 @@
 
     <style name="Theme.ArloReadingApp" parent="Base.Theme.ArloReadingApp" />
 
-    <!-- FAB Style -->
+    <!-- ============================================ -->
+    <!-- FAB STYLES - Large & Playful                -->
+    <!-- ============================================ -->
+
     <style name="ArloFabStyle" parent="Widget.Material3.FloatingActionButton.Primary">
-        <item name="backgroundTint">@color/primary</item>
-        <item name="tint">@color/on_primary</item>
+        <item name="backgroundTint">@color/secondary</item>
+        <item name="tint">@color/white</item>
         <item name="elevation">8dp</item>
+        <item name="fabCustomSize">64dp</item>
+        <item name="maxImageSize">28dp</item>
     </style>
 
-    <!-- Card Style for Books -->
+    <style name="ArloFabStyle.Extended" parent="Widget.Material3.ExtendedFloatingActionButton.Primary">
+        <item name="backgroundTint">@color/secondary</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="iconTint">@color/white</item>
+        <item name="elevation">8dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <!-- ============================================ -->
+    <!-- CARD STYLES - Rounded & Elevated            -->
+    <!-- ============================================ -->
+
     <style name="ArloBookCard" parent="Widget.Material3.CardView.Elevated">
         <item name="cardBackgroundColor">@color/surface</item>
-        <item name="cardCornerRadius">12dp</item>
+        <item name="cardCornerRadius">20dp</item>
+        <item name="cardElevation">6dp</item>
+        <item name="strokeWidth">0dp</item>
+    </style>
+
+    <style name="ArloCard" parent="Widget.Material3.CardView.Elevated">
+        <item name="cardBackgroundColor">@color/surface</item>
+        <item name="cardCornerRadius">16dp</item>
         <item name="cardElevation">4dp</item>
     </style>
 
-    <!-- Text Styles -->
+    <!-- ============================================ -->
+    <!-- TEXT STYLES - Sans-Serif for UI             -->
+    <!-- ============================================ -->
+
+    <!-- Title - Large & Bold -->
     <style name="ArloTextAppearance.Title" parent="TextAppearance.Material3.TitleLarge">
         <item name="android:textColor">@color/text_primary</item>
-        <item name="android:fontFamily">serif</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">28sp</item>
         <item name="android:textStyle">bold</item>
     </style>
 
+    <!-- Header - Section Headers -->
     <style name="ArloTextAppearance.Header" parent="TextAppearance.Material3.HeadlineMedium">
         <item name="android:textColor">@color/text_primary</item>
-        <item name="android:fontFamily">serif</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">32sp</item>
     </style>
 
+    <!-- Body Text -->
     <style name="ArloTextAppearance.Body" parent="TextAppearance.Material3.BodyLarge">
         <item name="android:textColor">@color/text_primary</item>
-        <item name="android:lineSpacingExtra">6dp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineSpacingExtra">4dp</item>
     </style>
 
+    <!-- Caption - Small Labels -->
     <style name="ArloTextAppearance.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">14sp</item>
     </style>
 
-    <!-- Button Styles -->
+    <!-- Reading Content - Serif for literacy -->
+    <style name="ArloTextAppearance.Reading" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:textSize">30sp</item>
+        <item name="android:lineSpacingMultiplier">1.5</item>
+        <item name="android:letterSpacing">0.01</item>
+    </style>
+
+    <!-- Button Text -->
+    <style name="ArloTextAppearance.Button" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textColor">@color/on_primary</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <!-- ============================================ -->
+    <!-- BUTTON STYLES - Large Touch Targets         -->
+    <!-- ============================================ -->
+
+    <!-- Primary Button - Filled -->
     <style name="ArloButton.Primary" parent="Widget.Material3.Button">
         <item name="backgroundTint">@color/primary</item>
         <item name="android:textColor">@color/on_primary</item>
-        <item name="cornerRadius">8dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:paddingHorizontal">24dp</item>
+        <item name="android:textAppearance">@style/ArloTextAppearance.Button</item>
+        <item name="elevation">4dp</item>
     </style>
 
+    <!-- Secondary Button - Outlined -->
     <style name="ArloButton.Secondary" parent="Widget.Material3.Button.OutlinedButton">
         <item name="strokeColor">@color/primary</item>
+        <item name="strokeWidth">2dp</item>
         <item name="android:textColor">@color/primary</item>
-        <item name="cornerRadius">8dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:paddingHorizontal">24dp</item>
+        <item name="android:textAppearance">@style/ArloTextAppearance.Button</item>
     </style>
 
+    <!-- Coral Button - For main actions -->
+    <style name="ArloButton.Coral" parent="Widget.Material3.Button">
+        <item name="backgroundTint">@color/secondary</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:paddingHorizontal">24dp</item>
+        <item name="android:textAppearance">@style/ArloTextAppearance.Button</item>
+        <item name="elevation">6dp</item>
+    </style>
+
+    <!-- Icon Button - Transparent -->
     <style name="ArloButton.Icon" parent="Widget.Material3.Button.IconButton">
         <item name="iconTint">@color/text_secondary</item>
         <item name="backgroundTint">@android:color/transparent</item>
         <item name="rippleColor">@color/ripple</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:minHeight">56dp</item>
     </style>
 
-    <!-- Reader Controls Button -->
+    <!-- Icon Button - Filled Circle -->
+    <style name="ArloButton.IconFilled" parent="Widget.Material3.Button.IconButton.Filled">
+        <item name="backgroundTint">@color/surface_variant</item>
+        <item name="iconTint">@color/primary</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:elevation">2dp</item>
+    </style>
+
+    <!-- ============================================ -->
+    <!-- READER CONTROL STYLES                       -->
+    <!-- ============================================ -->
+
+    <!-- Nav Controls (Prev/Next) -->
     <style name="ArloReaderControl" parent="Widget.Material3.Button.IconButton.Filled">
         <item name="backgroundTint">@color/surface</item>
         <item name="iconTint">@color/primary</item>
+        <item name="android:minWidth">64dp</item>
+        <item name="android:minHeight">64dp</item>
         <item name="android:elevation">4dp</item>
     </style>
+
+    <!-- Play/Pause Button - Large Coral -->
+    <style name="ArloReaderControl.PlayPause" parent="ArloReaderControl">
+        <item name="backgroundTint">@color/secondary</item>
+        <item name="iconTint">@color/white</item>
+        <item name="android:minWidth">80dp</item>
+        <item name="android:minHeight">80dp</item>
+        <item name="android:elevation">8dp</item>
+    </style>
+
+    <!-- Collaborative Mode Button - Purple -->
+    <style name="ArloReaderControl.Collaborative" parent="ArloReaderControl">
+        <item name="backgroundTint">@color/accent_purple</item>
+        <item name="iconTint">@color/white</item>
+    </style>
+
+    <!-- ============================================ -->
+    <!-- CHIP STYLES                                 -->
+    <!-- ============================================ -->
+
+    <style name="ArloChip" parent="Widget.Material3.Chip.Suggestion">
+        <item name="chipBackgroundColor">@color/primary</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="chipCornerRadius">20dp</item>
+        <item name="chipMinHeight">36dp</item>
+    </style>
+
+    <style name="ArloChip.Warning" parent="ArloChip">
+        <item name="chipBackgroundColor">@color/accent_orange</item>
+    </style>
+
 </resources>
