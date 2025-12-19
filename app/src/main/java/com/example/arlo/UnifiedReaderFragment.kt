@@ -278,8 +278,9 @@ class UnifiedReaderFragment : Fragment() {
             binding.tvSentence.setTextColor(ContextCompat.getColor(requireContext(), R.color.reader_text_secondary))
         }
 
-        // Hide collaborative toggle in kid mode (locked ON)
+        // Hide settings toggles in kid mode (locked to defaults)
         binding.btnCollaborative.visibility = if (state.kidMode) View.GONE else View.VISIBLE
+        binding.btnAutoAdvance.visibility = if (state.kidMode) View.GONE else View.VISIBLE
 
         // Collaborative mode indicator
         updateCollaborativeIndicator(state)

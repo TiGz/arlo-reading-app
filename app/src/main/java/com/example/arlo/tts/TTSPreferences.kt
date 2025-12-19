@@ -72,7 +72,7 @@ class TTSPreferences(context: Context) {
         private const val KEY_KID_MODE = "kid_mode"
         private const val DEFAULT_SPEECH_RATE = 1.0f
         private const val DEFAULT_COLLABORATIVE_MODE = true  // Default ON
-        private const val DEFAULT_AUTO_ADVANCE = true
+        private const val DEFAULT_AUTO_ADVANCE = false  // Default OFF - one sentence at a time
         private const val DEFAULT_KOKORO_VOICE = "bm_lewis"  // British male (Kokoro)
         private const val DEFAULT_KID_MODE = true  // Default ON - kids locked into collaborative mode
     }
