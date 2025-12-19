@@ -329,6 +329,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         val nextIndex = current.currentSentenceIndex + 1
 
+        // Record that we completed the current sentence (for stats)
+        viewModelScope.launch(Dispatchers.IO) {
+            statsRepository.recordSentenceRead()
+        }
+
         if (nextIndex < current.sentences.size) {
             // Move to next sentence on same page
             _state.value = current.copy(
@@ -613,69 +618,72 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      */
     private fun extractTargetWords(sentence: String): Pair<String, IntRange> {
         val trimmed = sentence.trim()
-        val words = trimmed.split(" ")
 
-        if (words.size <= 1) {
+        // Split into tokens but filter to only actual words (must contain a letter)
+        // This handles cases like "free - almost." where "-" is a standalone token
+        val allTokens = trimmed.split(" ")
+        val wordTokens = allTokens.filter { token -> token.any { it.isLetter() } }
+
+        if (wordTokens.size <= 1) {
             // Single word sentence - user reads the whole thing
             return Pair(trimmed, 0 until trimmed.length)
         }
 
-        val lastWord = words.last()
+        val lastWord = wordTokens.last()
         val lastWordSyllables = countSyllables(normalizeWord(lastWord))
 
         // Rule 1: If last word has ≥3 syllables, use just that
         if (lastWordSyllables >= 3) {
-            val lastSpaceIndex = trimmed.lastIndexOf(' ')
+            val lastWordIndex = trimmed.lastIndexOf(lastWord)
             Log.d(TAG, "extractTargetWords: '$lastWord' has $lastWordSyllables syllables, using just that")
-            return Pair(lastWord, (lastSpaceIndex + 1) until trimmed.length)
+            return Pair(lastWord, lastWordIndex until trimmed.length)
         }
 
         // Need more words - check last 2
-        if (words.size >= 2) {
-            val secondLastWord = words[words.size - 2]
+        if (wordTokens.size >= 2) {
+            val secondLastWord = wordTokens[wordTokens.size - 2]
             val secondLastSyllables = countSyllables(normalizeWord(secondLastWord))
             val twoWordSyllables = lastWordSyllables + secondLastSyllables
 
             // Rule 2: If last 2 words have ≥3 syllables total, use them
             if (twoWordSyllables >= 3) {
-                val secondLastSpaceIndex = trimmed.lastIndexOf(' ', trimmed.lastIndexOf(' ') - 1)
+                // Find where second-last word starts in the original string
+                val secondLastIndex = trimmed.indexOf(secondLastWord,
+                    trimmed.lastIndexOf(lastWord) - secondLastWord.length - 3) // Allow for punctuation between
+                val startIdx = if (secondLastIndex >= 0) secondLastIndex else 0
                 Log.d(TAG, "extractTargetWords: '$secondLastWord $lastWord' has $twoWordSyllables syllables, using last 2")
-                return if (secondLastSpaceIndex == -1) {
-                    Pair(trimmed, 0 until trimmed.length)
-                } else {
-                    val lastTwoWords = trimmed.substring(secondLastSpaceIndex + 1)
-                    Pair(lastTwoWords, (secondLastSpaceIndex + 1) until trimmed.length)
-                }
+                return Pair(trimmed.substring(startIdx), startIdx until trimmed.length)
             }
 
             // Rule 3: Both words are short (total <3 syllables) - try 3 words
-            if (words.size >= 3) {
-                val thirdLastWord = words[words.size - 3]
+            if (wordTokens.size >= 3) {
+                val thirdLastWord = wordTokens[wordTokens.size - 3]
                 val thirdLastSyllables = countSyllables(normalizeWord(thirdLastWord))
                 val threeWordSyllables = twoWordSyllables + thirdLastSyllables
 
                 Log.d(TAG, "extractTargetWords: '$thirdLastWord $secondLastWord $lastWord' has $threeWordSyllables syllables, using last 3")
-                // Find where third-last word starts
-                var spaceCount = 0
-                var idx = trimmed.length - 1
-                while (idx > 0 && spaceCount < 3) {
-                    if (trimmed[idx] == ' ') spaceCount++
-                    if (spaceCount < 3) idx--
-                }
-                val startIdx = if (spaceCount == 3) idx + 1 else 0
+                // Find where third-last word starts in the original string
+                val secondLastIndex = trimmed.indexOf(secondLastWord,
+                    trimmed.lastIndexOf(lastWord) - secondLastWord.length - 3)
+                val thirdLastIndex = trimmed.indexOf(thirdLastWord,
+                    (if (secondLastIndex >= 0) secondLastIndex else trimmed.lastIndexOf(lastWord)) - thirdLastWord.length - 3)
+                val startIdx = if (thirdLastIndex >= 0) thirdLastIndex else 0
                 return Pair(trimmed.substring(startIdx), startIdx until trimmed.length)
             }
         }
 
-        // Fallback: use last 2 words (or sentence if too short)
-        val secondLastSpaceIndex = trimmed.lastIndexOf(' ', trimmed.lastIndexOf(' ') - 1)
-        Log.d(TAG, "extractTargetWords: fallback to last 2 words")
-        return if (secondLastSpaceIndex == -1) {
-            Pair(trimmed, 0 until trimmed.length)
-        } else {
-            val lastTwoWords = trimmed.substring(secondLastSpaceIndex + 1)
-            Pair(lastTwoWords, (secondLastSpaceIndex + 1) until trimmed.length)
+        // Fallback: use last 2 actual words
+        if (wordTokens.size >= 2) {
+            val secondLastWord = wordTokens[wordTokens.size - 2]
+            val secondLastIndex = trimmed.indexOf(secondLastWord,
+                trimmed.lastIndexOf(lastWord) - secondLastWord.length - 3)
+            val startIdx = if (secondLastIndex >= 0) secondLastIndex else 0
+            Log.d(TAG, "extractTargetWords: fallback to last 2 words")
+            return Pair(trimmed.substring(startIdx), startIdx until trimmed.length)
         }
+
+        // Single word fallback
+        return Pair(trimmed, 0 until trimmed.length)
     }
 
     /**
