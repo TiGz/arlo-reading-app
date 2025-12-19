@@ -12,6 +12,7 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - Kokoro TTS integration with animated word highlighting and pre-caching
 - Collaborative reading mode (TTS reads, child speaks last word)
 - Animated word-by-word display with scale/color transitions
+- **Gamification system** with stars, streaks, achievements, and weekly goals
 - Kid mode with simplified controls and locked settings
 - Phonetic speech matching (Apache Commons Codec)
 - Speech recognition with Google Speech Services
@@ -28,7 +29,7 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - **UI:** View Binding, Material Components 1.11.0
 - **Camera:** CameraX 1.3.1
 - **OCR:** Claude Haiku API (model: claude-3-5-haiku-20241022) via OkHttp 4.12.0
-- **Database:** Room 2.6.1 (version 3 with migrations)
+- **Database:** Room 2.6.1 (version 8 with migrations)
 - **Security:** EncryptedSharedPreferences (security-crypto 1.1.0-alpha06)
 - **JSON:** Gson 2.10.1
 - **Image Loading:** Coil 2.5.0
@@ -44,13 +45,22 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 ```
 app/src/main/java/com/example/arlo/
 ├── data/
-│   ├── AppDatabase.kt        # Room database v3 with migrations
+│   ├── AppDatabase.kt        # Room database v8 with migrations
 │   ├── Book.kt               # Book entity with cover path + sentence index
 │   ├── Page.kt               # Page entity with sentencesJson + continuation flag
 │   ├── BookDao.kt            # 15+ query methods for CRUD
 │   ├── BookRepository.kt     # Repository with sentence handling
+│   ├── ReadingStatsDao.kt    # DAO for gamification queries
+│   ├── ReadingStatsRepository.kt  # Repository for stats operations
 │   ├── SentenceData.kt       # Data class for sentence parsing
-│   └── SentenceListConverter.kt  # Room TypeConverter for JSON
+│   ├── SentenceListConverter.kt  # Room TypeConverter for JSON
+│   ├── DailyStats.kt         # Daily reading statistics entity
+│   ├── DifficultWord.kt      # Word mastery tracking entity
+│   ├── CollaborativeAttempt.kt   # Individual attempt records
+│   ├── Achievement.kt        # Achievement definitions and progress
+│   ├── WeeklyGoal.kt         # Weekly activity goals
+│   ├── BookStats.kt          # Per-book statistics
+│   └── SessionStats.kt       # In-memory session tracking
 ├── ml/
 │   └── ClaudeOCRService.kt   # Claude Haiku API OCR with retry logic
 ├── ocr/
@@ -68,8 +78,9 @@ app/src/main/java/com/example/arlo/
 │   └── WordHighlightState.kt    # Animation state enum
 ├── ApiKeyManager.kt          # EncryptedSharedPreferences for API key
 ├── MainActivity.kt           # Single Activity host with API key dialog
-├── ArloApplication.kt        # App singleton with lazy init
+├── ArloApplication.kt        # App singleton with lazy init + statsRepository
 ├── LibraryFragment.kt        # 2-column book grid
+├── StatsDashboardFragment.kt # Gamification stats dashboard
 ├── LibraryViewModel.kt       # Books with page counts
 ├── BookWithInfo.kt           # Data class for enriched display
 ├── UnifiedReaderFragment.kt  # Sentence-by-sentence reader with collaborative mode
@@ -82,7 +93,7 @@ app/src/main/java/com/example/arlo/
 
 ## Database Schema
 
-**Database Version:** 3
+**Database Version:** 8
 
 **Books Table:**
 - `id` (Long, PK, auto-generate)
@@ -110,6 +121,71 @@ app/src/main/java/com/example/arlo/
 **SentenceData (JSON):**
 ```json
 {"text": "Sentence content.", "isComplete": true}
+```
+
+**DailyStats Table:** (Gamification)
+- `id` (Long, PK, auto-generate)
+- `date` (String, UNIQUE) - ISO date format "yyyy-MM-dd"
+- `totalAttempts` (Int) - All collaborative attempts
+- `correctFirstTry` (Int) - Stars earned base
+- `totalStars` (Int) - Including streak bonuses
+- `longestStreak` (Int) - Best streak of the day
+- `minutesRead` (Int) - Reading time tracking
+- `wordsRead` (Int) - Word count
+
+**DifficultWord Table:** (Word Mastery)
+- `id` (Long, PK, auto-generate)
+- `word` (String, UNIQUE) - Lowercase normalized
+- `incorrectCount` (Int) - Total failures
+- `correctCount` (Int) - Total successes
+- `lastAttemptDate` (Long) - Timestamp
+- `masteryLevel` (Int) - 0-5 progression
+- `consecutiveCorrect` (Int) - Current streak for this word
+
+**CollaborativeAttempt Table:** (Attempt History)
+- `id` (Long, PK, auto-generate)
+- `bookId` (Long, FK)
+- `pageId` (Long, FK)
+- `targetWord` (String)
+- `spokenWord` (String?, nullable)
+- `isCorrect` (Boolean)
+- `attemptNumber` (Int) - 1-3 per word
+- `timestamp` (Long)
+- `streakAtTime` (Int) - Streak when attempt made
+
+**Achievement Table:**
+- `id` (String, PK) - Achievement identifier
+- `name` (String)
+- `description` (String)
+- `iconResId` (Int) - Drawable resource
+- `targetValue` (Int) - Goal to unlock
+- `currentProgress` (Int)
+- `isUnlocked` (Boolean)
+- `unlockedAt` (Long?, nullable)
+
+**WeeklyGoal Table:**
+- `id` (Long, PK, auto-generate)
+- `weekStart` (String) - Monday date
+- `targetDays` (Int) - Default 5
+- `daysWithActivity` (String) - Comma-separated days
+- `isCompleted` (Boolean)
+
+**BookStats Table:**
+- `id` (Long, PK, auto-generate)
+- `bookId` (Long, FK, UNIQUE)
+- `totalWordsRead` (Int)
+- `totalAttempts` (Int)
+- `correctAttempts` (Int)
+- `lastReadDate` (Long)
+
+**SessionStats (In-Memory):**
+```kotlin
+data class SessionStats(
+    val sessionStars: Int = 0,
+    val currentStreak: Int = 0,
+    val bestStreak: Int = 0,
+    val wordsCompleted: Int = 0
+)
 ```
 
 ## Running the App
@@ -155,11 +231,20 @@ app/src/main/java/com/example/arlo/
    - **Collaborative reading**: TTS reads all but last word, child speaks it
    - Target words highlighted with background color (no animation)
    - Controls: Prev/Next sentence, Play/Pause, Mic toggle
+   - **Top bar**: Star counter pill, streak fire indicator, stats button
    - Shows pending OCR count indicator
    - Settings: Speech rate slider, voice selector (hidden in kid mode)
    - Auto-restores last read position (page + sentence)
+   - **Celebration animations** on star/streak milestones
 
-4. **SpeechSetupActivity** (First launch)
+4. **StatsDashboardFragment** (Gamification)
+   - Lifetime stats: Total stars, accuracy %, words mastered
+   - Weekly goal progress with day-of-week indicators
+   - Difficult words list (words needing practice)
+   - Achievements with progress tracking
+   - Back navigation to reader
+
+5. **SpeechSetupActivity** (First launch)
    - Fire tablet speech recognition setup wizard
    - Checks: Google app installed, permissions granted, speech test
    - Guides user through enabling speech recognition
@@ -225,6 +310,40 @@ app/src/main/java/com/example/arlo/
 - Hides collaborative mode and auto-advance toggles
 - Locks settings to sensible defaults
 - Simplified UI for child operation
+
+### Gamification System
+- **Stars**: Earned for correct first-try answers in collaborative mode
+- **Streak bonuses**: +1 star at 3 streak, +2 at 5, +3 at 10
+- **Word mastery**: 0-5 levels based on consecutive correct answers
+- **Weekly goals**: Gentle 5/7 days target with day-of-week tracking
+- **Achievements**: Progress-based unlockables (first star, streak milestones, etc.)
+- **Celebration animations**: Star burst (overshoot scale), fire pulse (on streak milestones)
+
+### Stats Dashboard
+- **Lifetime stats card**: Total stars, accuracy percentage, mastered words
+- **Weekly goal**: Visual day indicators (Mon-Sun circles, green when active)
+- **Difficult words**: Words with low mastery needing practice
+- **Achievements list**: RecyclerView with progress indicators
+- **Stats grid**: Best streak, total words, books read
+
+### Scoring Logic (UnifiedReaderViewModel)
+```kotlin
+// On correct first-try answer:
+var starsEarned = 1
+when {
+    newStreak >= 10 -> starsEarned += 3  // 4 total
+    newStreak >= 5 -> starsEarned += 2   // 3 total
+    newStreak >= 3 -> starsEarned += 1   // 2 total
+}
+// Recorded via ReadingStatsRepository.recordCollaborativeAttempt()
+```
+
+### Top Bar UI
+- **Two-row design**: Book/chapter titles on top, indicators on bottom
+- **Star counter pill**: Golden styling with ic_star icon
+- **Streak fire**: Shows at 3+ consecutive correct (ic_fire icon)
+- **Stats button**: Opens StatsDashboardFragment
+- **Settings button**: Consolidated voice/speed/auto-advance menu
 
 ### Speech Recognition
 - Uses Google Speech Services (SpeechRecognizer)
