@@ -138,7 +138,7 @@ class TTSCacheManager(
      * 2. Target word is contained in a timestamp word (e.g., "Mirror" in "Mirror-Cliffs")
      * 3. Timestamp word starts with target (e.g., "Mirror" matches "Mirror,")
      */
-    fun findWordTimestamp(sentence: String, targetWord: String): Long? {
+    fun findWordTimestamp(sentence: String, targetWord: String, findLast: Boolean = true): Long? {
         val cached = getCachedAudio(sentence) ?: return null
 
         return try {
@@ -150,9 +150,10 @@ class TTSCacheManager(
             for (i in 0 until array.length()) {
                 availableWords.add(array.getJSONObject(i).getString("word"))
             }
-            Log.d(TAG, "Looking for '$targetWord' in timestamps: $availableWords")
+            Log.d(TAG, "Looking for '$targetWord' (findLast=$findLast) in timestamps: $availableWords")
 
-            // First pass: exact match
+            // First pass: exact match - find last occurrence if findLast=true
+            var lastMatchTime: Double? = null
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 val word = obj.getString("word")
@@ -160,13 +161,23 @@ class TTSCacheManager(
 
                 if (wordNormalized == targetNormalized) {
                     val startTime = obj.getDouble("start_time")
-                    Log.d(TAG, "Found exact match for '$targetWord' at ${startTime}s")
-                    return (startTime * 1000).toLong()
+                    if (findLast) {
+                        lastMatchTime = startTime  // Keep updating to get last match
+                    } else {
+                        Log.d(TAG, "Found exact match for '$targetWord' at ${startTime}s")
+                        return (startTime * 1000).toLong()
+                    }
                 }
+            }
+
+            if (lastMatchTime != null) {
+                Log.d(TAG, "Found last exact match for '$targetWord' at ${lastMatchTime}s")
+                return (lastMatchTime * 1000).toLong()
             }
 
             // Second pass: target word contained in timestamp word
             // This handles cases like "Mirror Cliffs" being a single timestamp "Mirror Cliffs"
+            var lastPartialMatchTime: Double? = null
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 val word = obj.getString("word")
@@ -174,9 +185,18 @@ class TTSCacheManager(
 
                 if (wordNormalized.contains(targetNormalized) && targetNormalized.length >= 3) {
                     val startTime = obj.getDouble("start_time")
-                    Log.d(TAG, "Found partial match: '$targetWord' in '$word' at ${startTime}s")
-                    return (startTime * 1000).toLong()
+                    if (findLast) {
+                        lastPartialMatchTime = startTime
+                    } else {
+                        Log.d(TAG, "Found partial match: '$targetWord' in '$word' at ${startTime}s")
+                        return (startTime * 1000).toLong()
+                    }
                 }
+            }
+
+            if (lastPartialMatchTime != null) {
+                Log.d(TAG, "Found last partial match for '$targetWord' at ${lastPartialMatchTime}s")
+                return (lastPartialMatchTime * 1000).toLong()
             }
 
             // Third pass: estimate position if timestamps are truncated

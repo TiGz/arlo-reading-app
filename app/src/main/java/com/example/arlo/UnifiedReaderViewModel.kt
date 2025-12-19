@@ -631,6 +631,35 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     // Double Metaphone for phonetic matching (handles "than"/"then"/"Dan", "flesh"/"flash" etc.)
     private val doubleMetaphone = DoubleMetaphone()
 
+    // Homophones map - speech recognition often transcribes numbers for words
+    // Each set contains words that sound the same
+    private val homophoneSets = listOf(
+        setOf("to", "too", "two", "2"),
+        setOf("for", "four", "4"),
+        setOf("one", "won", "1"),
+        setOf("eight", "ate", "8"),
+        setOf("be", "bee"),
+        setOf("by", "buy", "bye"),
+        setOf("know", "no"),
+        setOf("knew", "new"),
+        setOf("right", "write"),
+        setOf("there", "their", "they're"),
+        setOf("hear", "here"),
+        setOf("see", "sea"),
+        setOf("son", "sun"),
+        setOf("would", "wood"),
+        setOf("you", "u"),
+        setOf("your", "you're", "ur"),
+        setOf("are", "r"),
+        setOf("why", "y"),
+        setOf("oh", "o", "0")
+    )
+
+    // Build lookup map for O(1) homophone checking
+    private val homophoneMap: Map<String, Set<String>> = homophoneSets.flatMap { set ->
+        set.map { word -> word to set }
+    }.toMap()
+
     /**
      * Check if spoken words match target using phonetic matching.
      * Handles both single words and multi-word targets (e.g., "read it").
@@ -713,7 +742,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Check if two words are phonetically similar using Double Metaphone.
-     * Also falls back to edit distance for close matches.
+     * Also checks homophones (too/2, for/4, etc.) and containment.
      */
     private fun isPhoneticMatch(spoken: String, target: String): Boolean {
         // Exact match
@@ -722,8 +751,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         // Empty strings
         if (spoken.isEmpty() || target.isEmpty()) return false
 
-        // Containment match: "forever" contains "ever", "Trevor" contains... no wait
-        // But we want "forever" to match "ever" - spoken contains target
+        // Homophone match (handles "too"/"2", "for"/"4", etc.)
+        val spokenHomophones = homophoneMap[spoken.lowercase()]
+        if (spokenHomophones != null && target.lowercase() in spokenHomophones) {
+            Log.d(TAG, "Homophone match: '$spoken' ≈ '$target'")
+            return true
+        }
+
+        // Containment match: "forever" contains "ever"
         if (target.length >= 3 && spoken.contains(target, ignoreCase = true)) {
             Log.d(TAG, "Containment match: '$spoken' contains '$target'")
             return true
@@ -773,10 +808,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val (targetWords, range) = extractTargetWords(sentence.text)
         Log.d(TAG, "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
 
-        // Store target words locally AND in state (local copy avoids race conditions)
+        // Store target words locally only - don't set in state until TTS finishes
+        // Setting targetWord in state while TTS is playing causes "Your turn!" to show prematurely
         currentTargetWords = targetWords
         _state.value = _state.value.copy(
-            targetWord = targetWords,
+            targetWord = null,  // Will be set when TTS finishes in onPartialTTSComplete
             attemptCount = 0,
             lastAttemptSuccess = null,
             collaborativeState = CollaborativeState.IDLE,
