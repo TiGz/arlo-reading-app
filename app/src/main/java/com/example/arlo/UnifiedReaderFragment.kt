@@ -2,12 +2,11 @@ package com.example.arlo
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.BackgroundColorSpan
+import com.example.arlo.ui.WordHighlightState
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -209,7 +208,7 @@ class UnifiedReaderFragment : Fragment() {
         binding.sentenceScrollView.visibility = if (isEmpty) View.GONE else View.VISIBLE
         binding.bottomControls.visibility = if (isEmpty) View.GONE else View.VISIBLE
 
-        // Sentence display
+        // Sentence display with animated word highlighting
         val sentence = state.currentSentence
         if (sentence != null) {
             val displayText = if (state.isLastSentenceIncomplete) {
@@ -218,64 +217,52 @@ class UnifiedReaderFragment : Fragment() {
                 sentence.text
             }
 
-            // Apply highlighting based on mode
-            val spannable = SpannableString(displayText)
-            var hasHighlight = false
+            // Update sentence in animated view
+            binding.animatedSentenceView.setSentence(displayText)
 
-            // In collaborative mode, highlight the target words
-            if (state.collaborativeMode && state.targetWord != null) {
-                val trimmedText = displayText.trim()
-                val targetWords = state.targetWord
-                val targetStart = trimmedText.length - targetWords.length
-                val targetEnd = trimmedText.length
+            // Apply incomplete styling
+            binding.animatedSentenceView.setIncomplete(state.isLastSentenceIncomplete)
 
-                val showHighlight = state.isSpeakingTargetWord ||
-                    state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING ||
-                    state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK
+            // Handle word highlighting based on state
+            when {
+                // Collaborative mode: highlight target word(s) for user interaction
+                state.collaborativeMode && state.targetWord != null &&
+                    (state.collaborativeState != UnifiedReaderViewModel.CollaborativeState.IDLE ||
+                     !state.isPlaying) -> {
+                    val targetWords = state.targetWord
+                    val wordCount = targetWords.split(" ").size
 
-                if (showHighlight && targetStart >= 0 && targetStart < targetEnd) {
-                    val highlightColor = when {
-                        state.isSpeakingTargetWord -> R.color.highlight_word  // Yellow
-                        state.lastAttemptSuccess == true -> R.color.highlight_success  // Green
-                        state.lastAttemptSuccess == false -> R.color.error  // Red
-                        else -> R.color.highlight_success  // Green for "your turn to read"
+                    // Determine the word highlight state (simple highlight, no animation)
+                    val highlightState = when {
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING -> WordHighlightState.LISTENING
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK && state.lastAttemptSuccess == true -> WordHighlightState.SUCCESS
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK && state.lastAttemptSuccess == false -> WordHighlightState.ERROR
+                        else -> WordHighlightState.USER_TURN
                     }
-                    spannable.setSpan(
-                        BackgroundColorSpan(ContextCompat.getColor(requireContext(), highlightColor)),
-                        targetStart,
-                        targetEnd,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                    hasHighlight = true
+
+                    // Highlight the target word(s) - they're at the end of the sentence
+                    val range = binding.animatedSentenceView.getLastNWordsRange(wordCount)
+                    if (range != null) {
+                        binding.animatedSentenceView.highlightWordRange(range.first, range.second, highlightState)
+                    }
+                }
+
+                // TTS word animation during playback - words grow bigger + purple as spoken
+                state.highlightRange != null && state.isPlaying -> {
+                    val (start, end) = state.highlightRange
+                    val wordIndex = binding.animatedSentenceView.charRangeToWordIndex(start, end)
+                    if (wordIndex >= 0) {
+                        binding.animatedSentenceView.highlightWord(wordIndex, WordHighlightState.TTS_SPEAKING)
+                    }
+                }
+
+                // No active state - reset all
+                else -> {
+                    binding.animatedSentenceView.resetAllHighlights()
                 }
             }
-
-            // TTS word highlighting
-            if (state.highlightRange != null && state.isPlaying) {
-                val (start, end) = state.highlightRange
-                if (start >= 0 && end <= displayText.length && start < end) {
-                    spannable.setSpan(
-                        BackgroundColorSpan(ContextCompat.getColor(requireContext(), R.color.highlight_word)),
-                        start,
-                        end,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                    hasHighlight = true
-                }
-            }
-
-            binding.tvSentence.text = if (hasHighlight) spannable else displayText
-
-            // Orange tint for incomplete sentences
-            val textColor = if (state.isLastSentenceIncomplete) {
-                ContextCompat.getColor(requireContext(), R.color.warning)
-            } else {
-                ContextCompat.getColor(requireContext(), R.color.reader_text_primary)
-            }
-            binding.tvSentence.setTextColor(textColor)
         } else if (!state.isLoading && state.pages.isNotEmpty()) {
-            binding.tvSentence.text = "No text on this page"
-            binding.tvSentence.setTextColor(ContextCompat.getColor(requireContext(), R.color.reader_text_secondary))
+            binding.animatedSentenceView.setSentence("No text on this page")
         }
 
         // Hide settings toggles in kid mode (locked to defaults)
@@ -383,6 +370,104 @@ class UnifiedReaderFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshPages()
+
+        // Check if microphone permission was lost while app was in background
+        // This can happen if user revokes permission in settings
+        checkMicrophonePermission()
+    }
+
+    /**
+     * Check if collaborative mode is enabled but microphone permission is missing.
+     * Checks both our app's permission AND the Google app's permission (required for speech recognition).
+     * Prompts user to re-grant if needed.
+     */
+    private fun checkMicrophonePermission() {
+        val state = viewModel.state.value
+
+        // Only check if collaborative mode is enabled (or kid mode which forces it)
+        if (!state.collaborativeMode && !state.kidMode) return
+
+        val hasOurPermission = ContextCompat.checkSelfPermission(
+            requireContext(),
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasOurPermission) {
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Microphone Permission Required")
+                .setMessage(
+                    "Collaborative reading mode needs microphone access to hear you read. " +
+                    "Please grant microphone permission to continue."
+                )
+                .setPositiveButton("Grant Permission") { _, _ ->
+                    requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+                .setNegativeButton("Open Settings") { _, _ ->
+                    // Take user to app settings if they've permanently denied
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.fromParts("package", requireContext().packageName, null)
+                    }
+                    startActivity(intent)
+                }
+                .setCancelable(false)
+                .show()
+            return
+        }
+
+        // Also check if the Google app has microphone permission
+        // The Google app provides speech recognition and needs its own permission
+        if (!isGoogleAppMicrophoneEnabled()) {
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Google App Needs Microphone Access")
+                .setMessage(
+                    "Speech recognition is provided by the Google app, which also needs microphone permission.\n\n" +
+                    "To fix this:\n" +
+                    "1. Open Settings → Apps → Google\n" +
+                    "2. Tap Permissions\n" +
+                    "3. Enable Microphone\n\n" +
+                    "Would you like to open Google app settings now?"
+                )
+                .setPositiveButton("Open Google Settings") { _, _ ->
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = android.net.Uri.fromParts("package", "com.google.android.googlequicksearchbox", null)
+                        }
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        // If Google app not found, open general settings
+                        startActivity(Intent(Settings.ACTION_SETTINGS))
+                    }
+                }
+                .setNegativeButton("Later", null)
+                .show()
+        }
+    }
+
+    /**
+     * Check if the Google app has microphone permission.
+     * This is required for speech recognition to work on Fire tablets.
+     */
+    private fun isGoogleAppMicrophoneEnabled(): Boolean {
+        return try {
+            val pm = requireContext().packageManager
+            val packageInfo = pm.getPackageInfo(
+                "com.google.android.googlequicksearchbox",
+                PackageManager.GET_PERMISSIONS
+            )
+
+            // Check if RECORD_AUDIO permission is granted to Google app
+            val grantedPermissions = packageInfo.requestedPermissions?.zip(
+                packageInfo.requestedPermissionsFlags?.toList() ?: emptyList()
+            )?.filter { (_, flags) ->
+                (flags and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+            }?.map { (perm, _) -> perm } ?: emptyList()
+
+            Manifest.permission.RECORD_AUDIO in grantedPermissions
+        } catch (e: Exception) {
+            // If we can't check (Google app not installed, etc.), assume it's OK
+            // The actual speech recognition will fail with a clear error if not
+            true
+        }
     }
 
     override fun onPause() {

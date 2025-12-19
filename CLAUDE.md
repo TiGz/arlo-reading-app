@@ -9,8 +9,11 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - OCR text extraction via Claude Haiku API with sentence-level parsing
 - Background OCR queue with retry logic and sentence continuation
 - Sentence-by-sentence reading mode (28sp fonts)
-- Kokoro TTS integration with word-level highlighting and pre-caching
+- Kokoro TTS integration with animated word highlighting and pre-caching
 - Collaborative reading mode (TTS reads, child speaks last word)
+- Animated word-by-word display with scale/color transitions
+- Kid mode with simplified controls and locked settings
+- Phonetic speech matching (Apache Commons Codec)
 - Speech recognition with Google Speech Services
 - Book/page organization with Room database
 - Reading progress tracking and restoration (page + sentence index)
@@ -33,6 +36,8 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - **TTS:** Kokoro TTS server (Docker) with Android TTS fallback
 - **Speech Recognition:** Google Speech Services (SpeechRecognizer)
 - **Audio:** ExoPlayer for Kokoro audio, SoundPool for feedback sounds
+- **Layout:** FlexboxLayout 3.0.0 for animated word display
+- **Phonetic Matching:** Apache Commons Codec 1.17.0
 
 ## Project Structure
 
@@ -57,6 +62,10 @@ app/src/main/java/com/example/arlo/
 │   ├── TTSService.kt         # Kokoro + Android TTS with word highlighting
 │   ├── TTSPreferences.kt     # Speech rate, voice, collaborative mode prefs
 │   └── TTSCacheManager.kt    # Pre-cache Kokoro audio for sentences
+├── ui/
+│   ├── AnimatedSentenceView.kt  # FlexboxLayout displaying animated words
+│   ├── WordView.kt              # Individual word with scale/color animations
+│   └── WordHighlightState.kt    # Animation state enum
 ├── ApiKeyManager.kt          # EncryptedSharedPreferences for API key
 ├── MainActivity.kt           # Single Activity host with API key dialog
 ├── ArloApplication.kt        # App singleton with lazy init
@@ -142,11 +151,12 @@ app/src/main/java/com/example/arlo/
 
 3. **UnifiedReaderFragment** (Sentence reader)
    - One sentence at a time (28sp serif font)
+   - **Animated word display**: Words grow + turn purple as TTS speaks them
    - **Collaborative reading**: TTS reads all but last word, child speaks it
-   - Word-level highlighting during TTS playback
+   - Target words highlighted with background color (no animation)
    - Controls: Prev/Next sentence, Play/Pause, Mic toggle
    - Shows pending OCR count indicator
-   - Settings: Speech rate slider, voice selector, auto-advance toggle
+   - Settings: Speech rate slider, voice selector (hidden in kid mode)
    - Auto-restores last read position (page + sentence)
 
 4. **SpeechSetupActivity** (First launch)
@@ -190,14 +200,31 @@ app/src/main/java/com/example/arlo/
 - **Start:** `docker compose up -d`
 - **Test:** `curl http://localhost:8880/health`
 
+### Animated Word Highlighting
+- **AnimatedSentenceView**: FlexboxLayout containing individual WordViews
+- **WordView**: AppCompatTextView with hardware-accelerated animations
+- **TTS animation**: Word scales up 8% + turns purple, shrinks back + black on next word
+- **Collaborative highlights**: Simple background color (no animation)
+  - Green (#highlight_success) for user turn
+  - Purple (#highlight_collaborative) for listening
+  - Success/Error animations for feedback
+- **Character-to-word mapping**: `charRangeToWordIndex()` converts TTS callbacks
+- Word spacing: 5dp horizontal margins for natural sentence flow
+
 ### Collaborative Reading Mode
 - TTS speaks all but the last word of each sentence
 - App listens for child to speak the final word
 - **3-state machine:** IDLE → LISTENING → FEEDBACK
-- Fuzzy matching: accepts word if spoken text contains it
+- **Phonetic matching**: Uses Soundex/Metaphone for fuzzy word comparison
 - **3 retries** before TTS reads the word and continues
 - Audio feedback: success ping, error buzz (via SoundPool)
-- Purple highlight (#E0B0FF) for the word being listened for
+- Target words shown with background highlight (green → purple when listening)
+
+### Kid Mode
+- Activated via TTSPreferences
+- Hides collaborative mode and auto-advance toggles
+- Locks settings to sensible defaults
+- Simplified UI for child operation
 
 ### Speech Recognition
 - Uses Google Speech Services (SpeechRecognizer)
@@ -228,11 +255,14 @@ app/src/main/java/com/example/arlo/
 
 ## Theme & Styling
 
-- **Primary:** Burgundy (#8B3A3A)
-- **Secondary:** Warm Gold (#C4A35A)
-- **Background:** Cream (#FAF6F0)
-- **Text:** Dark brown (#2D2A26)
-- **Highlight:** Warm yellow (#FFE8A0)
+- **Primary:** Teal (#00897B)
+- **Accent Purple:** (#7E57C2) - Collaborative mode
+- **Coral:** (#FF7043) - Play buttons
+- **Background:** Cream (#FFF8E1)
+- **Text Primary:** Dark (#2D2A26)
+- **Success:** Green (#4CAF50)
+- **Error:** Red (#F44336)
+- **Highlight Collaborative:** Light purple (#E0B0FF)
 
 Custom styles: `ArloFabStyle`, `ArloBookCard`, `ArloTextAppearance.*`, `ArloButton.*`, `ArloReaderControl`
 

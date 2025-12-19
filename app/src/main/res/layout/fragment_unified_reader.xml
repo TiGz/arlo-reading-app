@@ -179,17 +179,14 @@
             android:orientation="vertical"
             android:padding="28dp">
 
-            <!-- Main reading text - Large serif for literacy -->
-            <TextView
-                android:id="@+id/tvSentence"
+            <!-- Main reading text - Animated word-by-word display -->
+            <com.example.arlo.ui.AnimatedSentenceView
+                android:id="@+id/animatedSentenceView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="serif"
-                android:gravity="center"
-                android:lineSpacingMultiplier="1.5"
-                android:textColor="@color/text_primary"
-                android:textSize="30sp"
-                tools:text="The old man walked slowly down the dusty road." />
+                android:layout_gravity="center"
+                android:padding="8dp"
+                tools:ignore="MissingConstraints" />
 
             <!-- Collaborative mode indicator - Purple themed -->
             <LinearLayout

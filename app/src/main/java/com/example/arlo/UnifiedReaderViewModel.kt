@@ -48,6 +48,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     // Pre-warmed recognizer - created once and reused to reduce startup latency
     private var speechRecognizer: SpeechRecognizer? = null
     private var isRecognizerWarm = false
+    private var isUserCancellingRecognition = false  // Flag to ignore ERROR_CLIENT on user-initiated cancel
     private val isSpeechAvailable: Boolean
     val speechDiagnostics: String
 
@@ -272,7 +273,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     /**
      * Move to a specific page (for ViewPager page changes).
      */
-    fun moveToPage(pageIndex: Int) {
+    fun moveToPage(pageIndex: Int, preservePlayingState: Boolean = false) {
         val current = _state.value
         if (pageIndex < 0 || pageIndex >= current.pages.size) return
 
@@ -285,7 +286,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             currentPageIndex = pageIndex,
             currentSentenceIndex = 0,
             sentences = sentences,
-            isPlaying = false,
+            isPlaying = if (preservePlayingState) current.isPlaying else false,
             needsMorePages = false,
             highlightRange = null,
             targetWord = null,
@@ -317,7 +318,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Try to move to next page
             val nextPageIndex = current.currentPageIndex + 1
             if (nextPageIndex < current.pages.size) {
-                moveToPage(nextPageIndex)
+                // Preserve playing state when auto-advancing between pages
+                moveToPage(nextPageIndex, preservePlayingState = true)
             } else {
                 // No more pages - need to scan more
                 _state.value = current.copy(needsMorePages = true, isPlaying = false)
@@ -951,6 +953,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 }
                 Log.e(TAG, "onError: $errorName")
 
+                // Check if this error is from user-initiated cancel (pressing pause button)
+                if (error == SpeechRecognizer.ERROR_CLIENT && isUserCancellingRecognition) {
+                    Log.d(TAG, "Ignoring ERROR_CLIENT from user-initiated cancel")
+                    isUserCancellingRecognition = false
+                    return
+                }
+                isUserCancellingRecognition = false  // Reset flag for any other error
+
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH,
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
@@ -1051,6 +1061,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         val targetWord = _state.value.targetWord ?: ""
         Log.d(TAG, "Starting recognition for target word: '$targetWord'")
+
+        // Reset cancel flag when starting new recognition
+        isUserCancellingRecognition = false
 
         // Set a fresh listener before each startListening call
         recognizer.setRecognitionListener(createRecognitionListener())
@@ -1221,6 +1234,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      * Note: This cancels but doesn't destroy the recognizer to keep it warm for reuse.
      */
     fun cancelSpeechRecognition() {
+        // Set flag before cancel so onError(ERROR_CLIENT) knows to ignore it
+        isUserCancellingRecognition = true
         speechRecognizer?.cancel()  // Cancel but keep warm for faster restart
         _state.value = _state.value.copy(collaborativeState = CollaborativeState.IDLE)
     }

@@ -103,6 +103,9 @@ dependencies {
     // Phonetic matching (for speech recognition fuzzy matching)
     implementation("commons-codec:commons-codec:1.17.0")
 
+    // FlexboxLayout for animated word display
+    implementation("com.google.android.flexbox:flexbox:3.0.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

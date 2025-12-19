@@ -79,7 +79,22 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb logcat:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -s SpeechRecognition:D TTSService:D TTSCacheManager:D)",
       "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -s SpeechRecognition:D TTSCacheManager:D)",
-      "Skill(compound-engineering:frontend-design)"
+      "Skill(compound-engineering:frontend-design)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell am start -n com.example.arlo/.MainActivity)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -v time)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -v time -s \"SpeechRecognition:D\" \"TTSService:D\" \"TTSCacheManager:D\" \"UnifiedReader:D\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell am force-stop:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm grant com.example.arlo android.permission.RECORD_AUDIO)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell dumpsys package com.example.arlo)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm list users)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm grant:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm grant --user 10 com.example.arlo android.permission.RECORD_AUDIO)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm grant --user 11 com.example.arlo android.permission.RECORD_AUDIO)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell ps -A)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm dump com.google.android.googlequicksearchbox)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell dumpsys package com.google.android.googlequicksearchbox)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell pm revoke com.google.android.googlequicksearchbox android.permission.RECORD_AUDIO)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
