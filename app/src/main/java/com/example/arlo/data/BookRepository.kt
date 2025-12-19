@@ -206,16 +206,16 @@ class BookRepository(private val bookDao: BookDao) {
     }
 
     /**
-     * Reorder pages based on detected page numbers from OCR.
-     * Pages without detected numbers keep their relative position at the end.
+     * Reorder pages based on detected page labels from OCR.
+     * Only numeric labels can be sorted; pages with roman numerals or no label keep relative position.
      */
-    suspend fun reorderByDetectedPageNumber(bookId: Long) {
+    suspend fun reorderByDetectedPageLabel(bookId: Long) {
         val pages = bookDao.getPagesForBookSync(bookId)
 
-        // Separate pages with and without detected numbers
-        val withNumbers = pages.filter { it.detectedPageNumber != null }
-            .sortedBy { it.detectedPageNumber }
-        val withoutNumbers = pages.filter { it.detectedPageNumber == null }
+        // Separate pages with numeric labels from others
+        val withNumbers = pages.filter { it.detectedPageLabel?.toIntOrNull() != null }
+            .sortedBy { it.detectedPageLabel!!.toInt() }
+        val withoutNumbers = pages.filter { it.detectedPageLabel?.toIntOrNull() == null }
 
         // Combine: numbered pages first, then unnumbered in original order
         val sorted = withNumbers + withoutNumbers

@@ -100,6 +100,9 @@ dependencies {
     // ExoPlayer (for Kokoro TTS audio playback)
     implementation("androidx.media3:media3-exoplayer:1.5.0")
 
+    // Phonetic matching (for speech recognition fuzzy matching)
+    implementation("commons-codec:commons-codec:1.17.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

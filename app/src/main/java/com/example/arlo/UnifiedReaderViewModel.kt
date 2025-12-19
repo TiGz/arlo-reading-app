@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.apache.commons.codec.language.DoubleMetaphone
 import java.util.Locale
 
 /**
@@ -40,6 +41,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     private val repository = (application as ArloApplication).repository
     val ttsService = (application as ArloApplication).ttsService
+    private val ttsCacheManager = (application as ArloApplication).ttsCacheManager
     private val ttsPreferences = TTSPreferences(application)
 
     // Speech recognition (inline per reviewer feedback - no separate service)
@@ -107,7 +109,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val attemptCount: Int = 0,
         val lastAttemptSuccess: Boolean? = null,  // null = no attempt yet, true = success, false = failure
         val micLevel: Int = 0,  // 0-100 mic input level for visual feedback
-        val isSpeakingTargetWord: Boolean = false  // True when TTS is reading target word after failures
+        val isSpeakingTargetWord: Boolean = false,  // True when TTS is reading target word after failures
+        // Kid mode - locks collaborative mode ON and hides toggle button
+        val kidMode: Boolean = true  // Default ON - kids can't turn off collaborative mode
     ) {
         val currentPage: Page? get() = pages.getOrNull(currentPageIndex)
         val currentSentence: SentenceData? get() = sentences.getOrNull(currentSentenceIndex)
@@ -139,10 +143,15 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             val savedCollaborativeMode = ttsPreferences.getCollaborativeMode()
             val savedAutoAdvance = ttsPreferences.getAutoAdvance()
             val savedSpeechRate = ttsPreferences.getSpeechRate()
+            val savedKidMode = ttsPreferences.getKidMode()
 
-            // Only enable collaborative mode if we have audio permission
-            // (permission can be revoked during app reinstall)
-            val effectiveCollaborativeMode = savedCollaborativeMode && hasAudioPermission
+            // In kid mode, force collaborative mode ON
+            // Also require audio permission for collaborative mode to work
+            val effectiveCollaborativeMode = if (savedKidMode) {
+                hasAudioPermission  // Kid mode forces collaborative ON (if permission granted)
+            } else {
+                savedCollaborativeMode && hasAudioPermission
+            }
 
             if (book != null && pages.isNotEmpty()) {
                 // Resume from last position or start at beginning
@@ -163,8 +172,12 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     isLoading = false,
                     speechRate = savedSpeechRate,
                     collaborativeMode = effectiveCollaborativeMode,
-                    autoAdvance = savedAutoAdvance
+                    autoAdvance = savedAutoAdvance,
+                    kidMode = savedKidMode
                 )
+
+                // Pre-cache TTS audio for current page (ensures instant playback even for older pages)
+                preCacheCurrentPage(pages.getOrNull(startPageIndex), sentences)
             } else {
                 _state.value = ReaderState(
                     book = book,
@@ -172,7 +185,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     isLoading = false,
                     needsMorePages = pages.isEmpty(),
                     collaborativeMode = effectiveCollaborativeMode,
-                    autoAdvance = savedAutoAdvance
+                    autoAdvance = savedAutoAdvance,
+                    kidMode = savedKidMode
                 )
             }
 
@@ -190,6 +204,18 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
+     * Pre-cache TTS audio for the current page in background.
+     * Ensures instant playback even for pages that were OCR'd before caching existed.
+     */
+    private fun preCacheCurrentPage(page: Page?, sentences: List<SentenceData>) {
+        if (page == null || sentences.isEmpty()) return
+        ttsCacheManager.queueSentencesForCaching(
+            sentences.map { it.text },
+            page.id
+        )
+    }
+
+    /**
      * Toggle auto-advance mode.
      * When enabled (default), TTS continues to next sentence automatically.
      * When disabled, TTS reads one sentence and waits for user to tap next.
@@ -198,6 +224,31 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val newValue = !_state.value.autoAdvance
         ttsPreferences.saveAutoAdvance(newValue)
         _state.value = _state.value.copy(autoAdvance = newValue)
+    }
+
+    /**
+     * Toggle kid mode (parental lock).
+     * When enabled, collaborative mode is locked ON and the toggle button is hidden.
+     * Unlocked via 5 taps on book title.
+     */
+    fun toggleKidMode() {
+        val current = _state.value
+        val newKidMode = !current.kidMode
+        ttsPreferences.saveKidMode(newKidMode)
+
+        if (newKidMode) {
+            // Entering kid mode - force collaborative mode ON
+            ttsPreferences.saveCollaborativeMode(true)
+            _state.value = current.copy(
+                kidMode = true,
+                collaborativeMode = true
+            )
+            Log.d(TAG, "Kid mode ENABLED - collaborative mode locked ON")
+        } else {
+            // Exiting kid mode - keep current collaborative setting
+            _state.value = current.copy(kidMode = false)
+            Log.d(TAG, "Kid mode DISABLED - parent mode unlocked")
+        }
     }
 
     /**
@@ -354,7 +405,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             }
 
             viewModelScope.launch {
-                ttsService.speakWithKokoro(sentence.text) {
+                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
                     // Callback when TTS finishes
                     if (_state.value.isPlaying) {
                         if (_state.value.autoAdvance) {
@@ -544,6 +595,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Normalize word for matching - strip punctuation, lowercase.
+     * Keeps hyphens for compound words like "wounded-stream".
      */
     private fun normalizeWord(word: String): String {
         return word.lowercase()
@@ -552,26 +604,137 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * Check if spoken words match target.
+     * Split target words handling hyphens as word separators.
+     * "wounded-stream trunk" → ["wounded", "stream", "trunk"]
+     */
+    private fun splitIntoWords(text: String): List<String> {
+        return text.lowercase()
+            .replace("-", " ")  // Treat hyphens as spaces
+            .split(" ")
+            .map { normalizeWord(it) }
+            .filter { it.isNotEmpty() }
+    }
+
+    // Double Metaphone for phonetic matching (handles "than"/"then"/"Dan", "flesh"/"flash" etc.)
+    private val doubleMetaphone = DoubleMetaphone()
+
+    /**
+     * Check if spoken words match target using phonetic matching.
      * Handles both single words and multi-word targets (e.g., "read it").
+     * Uses Double Metaphone algorithm to match phonetically similar words
+     * (e.g., "than"/"then"/"Dan", "flesh"/"flash").
+     * Also handles hyphenated words like "wounded-stream" by splitting on hyphens.
+     * Handles speech recognition splitting words incorrectly (e.g., "wounded" → "when did").
      */
     private fun isWordMatch(spokenResults: List<String>, targetWords: String): Boolean {
-        val targetWordsList = targetWords.lowercase().split(" ").map { normalizeWord(it) }
+        // Split target handling hyphens: "wounded-stream trunk" → ["wounded", "stream", "trunk"]
+        val targetWordsList = splitIntoWords(targetWords)
 
         return spokenResults.any { spoken ->
-            val spokenWordsList = spoken.lowercase().split(" ").map { normalizeWord(it) }
+            // Split spoken words the same way
+            val spokenWordsList = splitIntoWords(spoken)
 
-            // Check if all target words appear in order in the spoken result
-            if (targetWordsList.size == 1) {
-                // Single word - just check if it appears anywhere
-                spokenWordsList.any { it == targetWordsList[0] }
-            } else {
-                // Multiple words - check if they appear in sequence
-                val spokenJoined = spokenWordsList.joinToString(" ")
-                val targetJoined = targetWordsList.joinToString(" ")
-                spokenJoined.contains(targetJoined)
+            // Try matching with flexible word boundaries
+            matchWordsFlexibly(spokenWordsList, targetWordsList)
+        }
+    }
+
+    /**
+     * Flexibly match spoken words to target words.
+     * Handles cases where speech recognition splits one word into two
+     * (e.g., "wounded" → "when did") by trying to match concatenated adjacent words.
+     */
+    private fun matchWordsFlexibly(spoken: List<String>, target: List<String>): Boolean {
+        if (target.isEmpty()) return true
+        if (spoken.isEmpty()) return false
+
+        // Try to match starting from position 0 in spoken words
+        return tryMatchFromPosition(spoken, 0, target, 0)
+    }
+
+    /**
+     * Recursively try to match target words against spoken words,
+     * allowing 1-2 spoken words to match a single target word.
+     */
+    private fun tryMatchFromPosition(
+        spoken: List<String>,
+        spokenIdx: Int,
+        target: List<String>,
+        targetIdx: Int
+    ): Boolean {
+        // Base case: matched all target words
+        if (targetIdx >= target.size) return true
+
+        // Not enough spoken words left
+        if (spokenIdx >= spoken.size) return false
+
+        val targetWord = target[targetIdx]
+
+        // Try 1: Single spoken word matches target word
+        if (isPhoneticMatch(spoken[spokenIdx], targetWord)) {
+            if (tryMatchFromPosition(spoken, spokenIdx + 1, target, targetIdx + 1)) {
+                return true
             }
         }
+
+        // Try 2: Two spoken words concatenated match target word
+        // (handles "wounded" being heard as "when did")
+        if (spokenIdx + 1 < spoken.size) {
+            val twoWordConcat = spoken[spokenIdx] + spoken[spokenIdx + 1]
+            if (isPhoneticMatch(twoWordConcat, targetWord)) {
+                Log.d(TAG, "Concat match: '${spoken[spokenIdx]}+${spoken[spokenIdx + 1]}' ≈ '$targetWord'")
+                if (tryMatchFromPosition(spoken, spokenIdx + 2, target, targetIdx + 1)) {
+                    return true
+                }
+            }
+        }
+
+        // Try 3: Skip this spoken word and try again (allows extra words in speech)
+        // But only if we haven't matched any target words yet (to avoid skipping important words)
+        if (targetIdx == 0 && spokenIdx < spoken.size - target.size) {
+            return tryMatchFromPosition(spoken, spokenIdx + 1, target, targetIdx)
+        }
+
+        return false
+    }
+
+    /**
+     * Check if two words are phonetically similar using Double Metaphone.
+     * Also falls back to edit distance for close matches.
+     */
+    private fun isPhoneticMatch(spoken: String, target: String): Boolean {
+        // Exact match
+        if (spoken == target) return true
+
+        // Empty strings
+        if (spoken.isEmpty() || target.isEmpty()) return false
+
+        // Containment match: "forever" contains "ever", "Trevor" contains... no wait
+        // But we want "forever" to match "ever" - spoken contains target
+        if (target.length >= 3 && spoken.contains(target, ignoreCase = true)) {
+            Log.d(TAG, "Containment match: '$spoken' contains '$target'")
+            return true
+        }
+
+        // Double Metaphone comparison (handles "than"/"then", "flesh"/"flash" etc.)
+        if (doubleMetaphone.isDoubleMetaphoneEqual(spoken, target)) {
+            Log.d(TAG, "Phonetic match: '$spoken' ≈ '$target' (DoubleMetaphone)")
+            return true
+        }
+
+        // Also check alternate encodings for edge cases
+        val spokenPrimary = doubleMetaphone.doubleMetaphone(spoken)
+        val spokenAlt = doubleMetaphone.doubleMetaphone(spoken, true)
+        val targetPrimary = doubleMetaphone.doubleMetaphone(target)
+        val targetAlt = doubleMetaphone.doubleMetaphone(target, true)
+
+        // Any combination of primary/alternate matches
+        if (spokenPrimary == targetAlt || spokenAlt == targetPrimary || spokenAlt == targetAlt) {
+            Log.d(TAG, "Phonetic match (alt): '$spoken' ≈ '$target'")
+            return true
+        }
+
+        return false
     }
 
     // Store target words outside of state to avoid race conditions with TTS callbacks
@@ -580,6 +743,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     /**
      * Speak current sentence in collaborative mode:
      * TTS reads all but the last word, then listens for user to speak it.
+     * Uses timestamp-based clipping to play partial audio from full sentence cache.
      */
     fun speakCurrentSentenceCollaborative() {
         val sentence = _state.value.currentSentence ?: return
@@ -606,26 +770,44 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             isPlaying = true
         )
 
-        // Get text without target words
+        // Check if single word sentence
         val textWithoutTargetWords = sentence.text.substring(0, range.first).trim()
-
         if (textWithoutTargetWords.isEmpty()) {
             // Single word sentence - go straight to listening
             onPartialTTSComplete(targetWords)
-        } else {
-            // Speak partial sentence, then listen
-            if (ttsService.isReady()) {
-                // Set up word highlighting callback for collaborative mode too
-                ttsService.setOnRangeStartListener { start, end ->
-                    _state.value = _state.value.copy(highlightRange = Pair(start, end))
-                }
+            return
+        }
 
-                viewModelScope.launch {
-                    ttsService.speakWithKokoro(textWithoutTargetWords) {
-                        // Clear highlight when done speaking partial sentence
-                        _state.value = _state.value.copy(highlightRange = null)
-                        onPartialTTSComplete(targetWords)
-                    }
+        if (!ttsService.isReady()) return
+
+        // Set up word highlighting callback
+        ttsService.setOnRangeStartListener { start, end ->
+            _state.value = _state.value.copy(highlightRange = Pair(start, end))
+        }
+
+        viewModelScope.launch {
+            // Find where target word starts in the cached audio
+            val firstTargetWord = targetWords.split(" ").first()
+            val stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
+
+            if (stopAtMs != null) {
+                // Cache hit - play full sentence audio but stop at target word
+                Log.d(TAG, "Collaborative: playing until ${stopAtMs}ms (before '$firstTargetWord')")
+                ttsService.speakWithKokoroUntil(sentence.text, ttsCacheManager, stopAtMs) {
+                    _state.value = _state.value.copy(highlightRange = null)
+                    onPartialTTSComplete(targetWords)
+                }
+            } else {
+                // Cache miss - fetch full sentence, find timestamp, play partial
+                // speakWithKokoroUntil handles this internally but we need to find the timestamp first
+                // For now, fallback to speaking the partial text directly (will be cached as partial)
+                Log.d(TAG, "Collaborative: cache miss, fetching full sentence first")
+                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
+                    // Full sentence now cached - but we played it all
+                    // On next sentence, cache will hit properly
+                    // TODO: Could retry with partial playback here, but user already heard it
+                    _state.value = _state.value.copy(highlightRange = null)
+                    onPartialTTSComplete(targetWords)
                 }
             }
         }
@@ -915,34 +1097,56 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * TTS reads the correct word after 3 failed attempts, then gives user 3 more tries.
+     * Uses cached audio from full sentence if available, playing only from the target word's timestamp.
      */
     private fun speakCorrectWordAndRetry(word: String) {
-        if (ttsService.isReady()) {
-            // Clear any previous highlight listener - we don't want position-based highlighting
-            // for just the target word (positions would be wrong)
-            ttsService.setOnRangeStartListener { _, _ -> /* no-op */ }
+        if (!ttsService.isReady()) return
 
-            // Set flag to show yellow highlight on target word
-            // Also reset lastAttemptSuccess so when listening starts, highlight is green (not red from last failure)
-            _state.value = _state.value.copy(
-                isSpeakingTargetWord = true,
-                highlightRange = null,  // Clear any stale highlight range
-                lastAttemptSuccess = null  // Reset so highlight will be green when listening starts
-            )
+        val sentence = _state.value.currentSentence ?: return
 
-            viewModelScope.launch {
-                ttsService.speakWithKokoro(word) {
-                    viewModelScope.launch {
-                        delay(300)
-                        // Reset attempt count and let user try again after hearing pronunciation
-                        _state.value = _state.value.copy(
-                            collaborativeState = CollaborativeState.IDLE,
-                            attemptCount = 0,
-                            isSpeakingTargetWord = false
-                        )
-                        startSpeechRecognition()
-                    }
+        // Clear any previous highlight listener - we don't want position-based highlighting
+        // for just the target word (positions would be wrong when playing partial)
+        ttsService.setOnRangeStartListener { _, _ -> /* no-op */ }
+
+        // Set flag to show yellow highlight on target word
+        // Also reset lastAttemptSuccess so when listening starts, highlight is green (not red from last failure)
+        _state.value = _state.value.copy(
+            isSpeakingTargetWord = true,
+            highlightRange = null,  // Clear any stale highlight range
+            lastAttemptSuccess = null  // Reset so highlight will be green when listening starts
+        )
+
+        viewModelScope.launch {
+            // Try to play the target word from the cached full sentence audio
+            val firstWord = word.split(" ").first()
+            val startFromMs = ttsCacheManager.findWordTimestamp(sentence.text, firstWord)
+
+            val onComplete: () -> Unit = {
+                viewModelScope.launch {
+                    delay(300)
+                    // Reset attempt count and let user try again after hearing pronunciation
+                    _state.value = _state.value.copy(
+                        collaborativeState = CollaborativeState.IDLE,
+                        attemptCount = 0,
+                        isSpeakingTargetWord = false
+                    )
+                    startSpeechRecognition()
                 }
+            }
+
+            if (startFromMs != null) {
+                // Play just the target word(s) from cached full sentence
+                Log.d(TAG, "Speaking correction from cached audio starting at ${startFromMs}ms")
+                val played = ttsService.speakCachedFrom(sentence.text, ttsCacheManager, startFromMs, onComplete)
+                if (!played) {
+                    // Cache disappeared? Fallback to speaking the word directly
+                    Log.d(TAG, "Cache miss during correction, speaking word directly")
+                    ttsService.speakWithKokoro(word, ttsCacheManager, onComplete)
+                }
+            } else {
+                // Not cached - speak the word directly (will cache it separately)
+                Log.d(TAG, "No timestamp found, speaking correction word directly")
+                ttsService.speakWithKokoro(word, ttsCacheManager, onComplete)
             }
         }
     }

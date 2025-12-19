@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Book::class, Page::class], version = 6, exportSchema = false)
+@Database(entities = [Book::class, Page::class], version = 7, exportSchema = false)
 @TypeConverters(SentenceListConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
@@ -57,6 +57,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Replace detectedPageNumber (Int) with detectedPageLabel (String) for roman numerals
+                // Add chapterTitle for chapter headings
+                db.execSQL("ALTER TABLE pages ADD COLUMN detectedPageLabel TEXT")
+                db.execSQL("ALTER TABLE pages ADD COLUMN chapterTitle TEXT")
+                // Copy existing detectedPageNumber values to detectedPageLabel as strings
+                db.execSQL("UPDATE pages SET detectedPageLabel = CAST(detectedPageNumber AS TEXT) WHERE detectedPageNumber IS NOT NULL")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -64,7 +75,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "arlo_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

@@ -37,6 +37,12 @@ class UnifiedReaderFragment : Fragment() {
     private lateinit var viewModel: UnifiedReaderViewModel
     private var bookId: Long = -1L
 
+    // Secret tap counter for parental unlock (5 taps on book title)
+    private var secretTapCount = 0
+    private var lastSecretTapTime = 0L
+    private val SECRET_TAP_TIMEOUT_MS = 2000L  // Reset if more than 2s between taps
+    private val SECRET_TAP_COUNT_REQUIRED = 5
+
     // Permission launcher for RECORD_AUDIO
     private val requestAudioPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -90,6 +96,11 @@ class UnifiedReaderFragment : Fragment() {
         binding.btnBack.setOnClickListener {
             viewModel.stopReading()
             parentFragmentManager.popBackStack()
+        }
+
+        // Secret tap on book title to toggle kid mode (5 taps within 2 seconds)
+        binding.tvBookTitle.setOnClickListener {
+            handleSecretTap()
         }
 
         binding.btnAutoAdvance.setOnClickListener {
@@ -266,6 +277,9 @@ class UnifiedReaderFragment : Fragment() {
             binding.tvSentence.text = "No text on this page"
             binding.tvSentence.setTextColor(ContextCompat.getColor(requireContext(), R.color.reader_text_secondary))
         }
+
+        // Hide collaborative toggle in kid mode (locked ON)
+        binding.btnCollaborative.visibility = if (state.kidMode) View.GONE else View.VISIBLE
 
         // Collaborative mode indicator
         updateCollaborativeIndicator(state)
@@ -584,6 +598,36 @@ class UnifiedReaderFragment : Fragment() {
 
     private fun formatSpeedLabel(rate: Float): String {
         return String.format("%.2fx", rate)
+    }
+
+    /**
+     * Handle secret tap on book title to toggle kid mode.
+     * Requires 5 taps within 2 seconds to toggle.
+     */
+    private fun handleSecretTap() {
+        val now = System.currentTimeMillis()
+
+        // Reset if too much time has passed since last tap
+        if (now - lastSecretTapTime > SECRET_TAP_TIMEOUT_MS) {
+            secretTapCount = 0
+        }
+
+        secretTapCount++
+        lastSecretTapTime = now
+
+        if (secretTapCount >= SECRET_TAP_COUNT_REQUIRED) {
+            secretTapCount = 0
+            val wasKidMode = viewModel.state.value.kidMode
+            viewModel.toggleKidMode()
+
+            // Show toast feedback for parent
+            val message = if (wasKidMode) {
+                "Parent mode unlocked"
+            } else {
+                "Kid mode enabled"
+            }
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     companion object {

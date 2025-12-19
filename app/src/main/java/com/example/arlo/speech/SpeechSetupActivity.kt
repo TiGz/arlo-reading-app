@@ -198,7 +198,11 @@ class SpeechSetupActivity : AppCompatActivity() {
             progressBar.visibility = View.GONE
         }
 
-        // Update status
+        // Update subtitle with progress
+        subtitleText.text = setupManager.getPlayStoreProgress()
+
+        // Update status based on what's missing
+        val nextComponent = state.getNextPlayStoreComponent()
         when {
             state.allChecksPassed -> {
                 statusText.text = "All checks passed! Speech recognition is ready."
@@ -212,8 +216,15 @@ class SpeechSetupActivity : AppCompatActivity() {
                 continueButton.text = "Continue Anyway"
                 continueButton.isEnabled = true
             }
+            nextComponent != null -> {
+                // Still installing Play Store components
+                statusText.text = "Next: Install ${nextComponent.displayName} (step ${nextComponent.installOrder} of 4)"
+                statusText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+                continueButton.text = "Continue Without Speech"
+                continueButton.isEnabled = true
+            }
             !state.isGoogleAppInstalled -> {
-                statusText.text = "Install the Google app to enable speech recognition."
+                statusText.text = "Play Store ready! Now install the Google app from Play Store."
                 statusText.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
                 continueButton.text = "Continue Without Speech"
                 continueButton.isEnabled = true

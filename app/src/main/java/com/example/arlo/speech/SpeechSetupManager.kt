@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -28,12 +29,84 @@ class SpeechSetupManager(private val context: Context) {
         private const val KEY_SETUP_COMPLETE = "setup_complete"
         private const val KEY_SETUP_SKIPPED = "setup_skipped"
 
+        // Google components needed for Play Store (install in this order)
+        const val GOOGLE_ACCOUNT_MANAGER_PACKAGE = "com.google.android.gsf.login"
+        const val GOOGLE_SERVICES_FRAMEWORK_PACKAGE = "com.google.android.gsf"
+        const val GOOGLE_PLAY_SERVICES_PACKAGE = "com.google.android.gms"
+        const val PLAY_STORE_PACKAGE = "com.android.vending"
+
         // Google app package that provides speech recognition
         const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
         const val GOOGLE_SPEECH_SERVICE = "com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
+
+        // APKMirror download pages for each component
+        const val URL_ACCOUNT_MANAGER = "https://www.apkmirror.com/apk/google-inc/google-account-manager/google-account-manager-7-1-2-release/"
+        // Services Framework varies by Fire OS version
+        const val URL_SERVICES_FRAMEWORK_V9 = "https://www.apkmirror.com/apk/google-inc/google-services-framework/google-services-framework-9-6957767-release/"
+        const val URL_SERVICES_FRAMEWORK_V10 = "https://www.apkmirror.com/apk/google-inc/google-services-framework/google-services-framework-10-6494331-release/"
+        const val URL_PLAY_SERVICES = "https://www.apkmirror.com/apk/google-inc/google-play-services/"
+        const val URL_PLAY_STORE = "https://www.apkmirror.com/apk/google-inc/google-play-store/"
+        const val URL_SETUP_GUIDE = "https://www.androidpolice.com/install-play-store-amazon-fire-tablet/"
+    }
+
+    /**
+     * Device info for determining correct APK versions.
+     */
+    data class DeviceInfo(
+        val model: String,
+        val androidVersion: Int,
+        val cpuAbi: String,
+        val isFireOS8: Boolean,
+        val is64Bit: Boolean
+    ) {
+        companion object {
+            fun detect(): DeviceInfo {
+                val model = Build.MODEL ?: "Unknown"
+                val androidVersion = Build.VERSION.SDK_INT
+                val cpuAbi = Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
+                val is64Bit = cpuAbi.contains("64")
+                // Fire OS 8 is based on Android 11 (SDK 30)
+                val isFireOS8 = androidVersion >= 30
+
+                return DeviceInfo(
+                    model = model,
+                    androidVersion = androidVersion,
+                    cpuAbi = cpuAbi,
+                    isFireOS8 = isFireOS8,
+                    is64Bit = is64Bit
+                )
+            }
+        }
+
+        /** Get the correct Services Framework URL based on Fire OS version */
+        fun getServicesFrameworkUrl(): String {
+            return if (isFireOS8) URL_SERVICES_FRAMEWORK_V10 else URL_SERVICES_FRAMEWORK_V9
+        }
+
+        /** Get human-readable description of what APK to look for */
+        fun getPlayServicesHint(): String {
+            // Fire tablets need the dual-architecture build, NOT universal
+            val androidMin = if (isFireOS8) "Android 10+ or 11+" else "Android 9+"
+            return "Choose: arm64-v8a + armeabi-v7a, nodpi, $androidMin (NOT universal!)"
+        }
+
+        fun getPlayStoreHint(): String {
+            val androidMin = if (isFireOS8) "Android 10+ or 11+" else "Android 9+"
+            return "Choose: arm64-v8a + armeabi-v7a, nodpi, $androidMin (APK not bundle!)"
+        }
+
+        fun getFireOSVersion(): String {
+            return if (isFireOS8) "Fire OS 8 (Android 11)" else "Fire OS 7 (Android 9)"
+        }
     }
 
     data class SetupState(
+        // Play Store components (must be installed in order)
+        val isAccountManagerInstalled: Boolean = false,
+        val isServicesFrameworkInstalled: Boolean = false,
+        val isPlayServicesInstalled: Boolean = false,
+        val isPlayStoreInstalled: Boolean = false,
+        // Google app for speech recognition
         val isGoogleAppInstalled: Boolean = false,
         val isGoogleAppHasPermission: Boolean = false,
         val isAppHasRecordPermission: Boolean = false,
@@ -42,13 +115,64 @@ class SpeechSetupManager(private val context: Context) {
         val isTestingInProgress: Boolean = false,
         val testError: String? = null,
         val allChecksPassed: Boolean = false
-    )
+    ) {
+        /** Returns the next Play Store component that needs to be installed, or null if all are installed */
+        fun getNextPlayStoreComponent(): PlayStoreComponent? {
+            return when {
+                !isAccountManagerInstalled -> PlayStoreComponent.ACCOUNT_MANAGER
+                !isServicesFrameworkInstalled -> PlayStoreComponent.SERVICES_FRAMEWORK
+                !isPlayServicesInstalled -> PlayStoreComponent.PLAY_SERVICES
+                !isPlayStoreInstalled -> PlayStoreComponent.PLAY_STORE
+                else -> null
+            }
+        }
+
+        /** Returns count of Play Store components installed */
+        fun playStoreComponentsInstalled(): Int {
+            var count = 0
+            if (isAccountManagerInstalled) count++
+            if (isServicesFrameworkInstalled) count++
+            if (isPlayServicesInstalled) count++
+            if (isPlayStoreInstalled) count++
+            return count
+        }
+    }
+
+    enum class PlayStoreComponent(
+        val displayName: String,
+        val packageName: String,
+        val installOrder: Int
+    ) {
+        ACCOUNT_MANAGER(
+            "Google Account Manager",
+            GOOGLE_ACCOUNT_MANAGER_PACKAGE,
+            1
+        ),
+        SERVICES_FRAMEWORK(
+            "Google Services Framework",
+            GOOGLE_SERVICES_FRAMEWORK_PACKAGE,
+            2
+        ),
+        PLAY_SERVICES(
+            "Google Play Services",
+            GOOGLE_PLAY_SERVICES_PACKAGE,
+            3
+        ),
+        PLAY_STORE(
+            "Google Play Store",
+            PLAY_STORE_PACKAGE,
+            4
+        )
+    }
 
     private val _state = MutableStateFlow(SetupState())
     val state: StateFlow<SetupState> = _state.asStateFlow()
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var speechRecognizer: SpeechRecognizer? = null
+
+    /** Device info for APK recommendations */
+    val deviceInfo: DeviceInfo = DeviceInfo.detect()
 
     /**
      * Check if setup has been completed successfully before.
@@ -97,6 +221,13 @@ class SpeechSetupManager(private val context: Context) {
     fun runDiagnostics() {
         Log.d(TAG, "Running diagnostics...")
 
+        // Check Play Store components
+        val isAccountManagerInstalled = checkPackageInstalled(GOOGLE_ACCOUNT_MANAGER_PACKAGE)
+        val isServicesFrameworkInstalled = checkPackageInstalled(GOOGLE_SERVICES_FRAMEWORK_PACKAGE)
+        val isPlayServicesInstalled = checkPackageInstalled(GOOGLE_PLAY_SERVICES_PACKAGE)
+        val isPlayStoreInstalled = checkPackageInstalled(PLAY_STORE_PACKAGE)
+
+        // Check Google app and permissions
         val isGoogleInstalled = checkGoogleAppInstalled()
         val isGoogleHasPermission = checkGoogleAppHasRecordPermission()
         val isAppHasPermission = checkAppHasRecordPermission()
@@ -106,6 +237,10 @@ class SpeechSetupManager(private val context: Context) {
                                 isAppHasPermission && isSpeechAvailable
 
         _state.value = _state.value.copy(
+            isAccountManagerInstalled = isAccountManagerInstalled,
+            isServicesFrameworkInstalled = isServicesFrameworkInstalled,
+            isPlayServicesInstalled = isPlayServicesInstalled,
+            isPlayStoreInstalled = isPlayStoreInstalled,
             isGoogleAppInstalled = isGoogleInstalled,
             isGoogleAppHasPermission = isGoogleHasPermission,
             isAppHasRecordPermission = isAppHasPermission,
@@ -245,15 +380,19 @@ class SpeechSetupManager(private val context: Context) {
         cancelTest()
     }
 
-    private fun checkGoogleAppInstalled(): Boolean {
+    private fun checkPackageInstalled(packageName: String): Boolean {
         return try {
-            context.packageManager.getPackageInfo(GOOGLE_APP_PACKAGE, 0)
-            Log.d(TAG, "Google app is installed")
+            context.packageManager.getPackageInfo(packageName, 0)
+            Log.d(TAG, "$packageName is installed")
             true
         } catch (e: PackageManager.NameNotFoundException) {
-            Log.d(TAG, "Google app is NOT installed")
+            Log.d(TAG, "$packageName is NOT installed")
             false
         }
+    }
+
+    private fun checkGoogleAppInstalled(): Boolean {
+        return checkPackageInstalled(GOOGLE_APP_PACKAGE)
     }
 
     private fun checkGoogleAppHasRecordPermission(): Boolean {
@@ -275,39 +414,91 @@ class SpeechSetupManager(private val context: Context) {
 
     /**
      * Get instructions for setting up speech recognition on Fire tablets.
+     * Shows each Play Store component separately so users know exactly what's installed.
+     * Uses device info to provide accurate APK recommendations.
      */
     fun getSetupInstructions(): List<SetupInstruction> {
         return listOf(
+            // Pre-requisite: Enable sideloading
+            SetupInstruction(
+                id = "enable_sideload",
+                title = "0. Enable APK Installation",
+                description = "Settings → Security → Install unknown apps → Silk Browser → Allow",
+                helpUrl = "https://www.howtogeek.com/178357/how-to-sideload-apps-onto-your-kindle-fire/",
+                checkState = { true } // Can't detect this, always show as info
+            ),
+            // Play Store components (must be installed in order)
+            SetupInstruction(
+                id = "account_manager",
+                title = "1. Google Account Manager",
+                description = "Tap Download, then choose version 7.1.2",
+                helpUrl = URL_ACCOUNT_MANAGER,
+                checkState = { _state.value.isAccountManagerInstalled }
+            ),
+            SetupInstruction(
+                id = "services_framework",
+                title = "2. Google Services Framework",
+                description = if (deviceInfo.isFireOS8) "Tap Download, choose version 10" else "Tap Download, choose version 9",
+                helpUrl = deviceInfo.getServicesFrameworkUrl(),
+                checkState = { _state.value.isServicesFrameworkInstalled }
+            ),
+            SetupInstruction(
+                id = "play_services",
+                title = "3. Google Play Services",
+                description = deviceInfo.getPlayServicesHint(),
+                helpUrl = URL_PLAY_SERVICES,
+                checkState = { _state.value.isPlayServicesInstalled }
+            ),
+            SetupInstruction(
+                id = "play_store",
+                title = "4. Google Play Store",
+                description = deviceInfo.getPlayStoreHint(),
+                helpUrl = URL_PLAY_STORE,
+                checkState = { _state.value.isPlayStoreInstalled }
+            ),
+            // Google app for speech recognition
             SetupInstruction(
                 id = "google_app",
-                title = "Install Google App",
-                description = "The Google app provides speech recognition on Fire tablets.",
-                helpUrl = "https://www.apkmirror.com/apk/google-inc/google-search/",
+                title = "5. Install Google App",
+                description = "Open Play Store and install the Google app.",
+                helpUrl = null,
                 checkState = { _state.value.isGoogleAppInstalled }
             ),
             SetupInstruction(
                 id = "google_permission",
-                title = "Grant Microphone to Google App",
-                description = "Open Settings > Apps > Google > Permissions and enable Microphone.",
+                title = "6. Grant Microphone to Google",
+                description = "Settings > Apps > Google > Permissions > Microphone",
                 helpUrl = null,
                 adbCommand = "adb shell pm grant com.google.android.googlequicksearchbox android.permission.RECORD_AUDIO",
                 checkState = { _state.value.isGoogleAppHasPermission && _state.value.isSpeechTestPassed }
             ),
             SetupInstruction(
                 id = "app_permission",
-                title = "Grant Microphone to Arlo",
+                title = "7. Grant Microphone to Arlo",
                 description = "Allow Arlo to access the microphone when prompted.",
                 helpUrl = null,
                 checkState = { _state.value.isAppHasRecordPermission }
             ),
             SetupInstruction(
                 id = "speech_test",
-                title = "Speech Recognition Test",
-                description = "Verify that speech recognition is working.",
+                title = "8. Speech Recognition Test",
+                description = "Tap 'Run Test' below to verify speech recognition works.",
                 helpUrl = null,
                 checkState = { _state.value.isSpeechTestPassed }
             )
         )
+    }
+
+    /**
+     * Get a summary of Play Store installation progress.
+     */
+    fun getPlayStoreProgress(): String {
+        val installed = _state.value.playStoreComponentsInstalled()
+        return when {
+            installed == 0 -> "Device: ${deviceInfo.model} • ${deviceInfo.getFireOSVersion()}"
+            installed < 4 -> "$installed of 4 components installed"
+            else -> "All Play Store components installed!"
+        }
     }
 
     data class SetupInstruction(

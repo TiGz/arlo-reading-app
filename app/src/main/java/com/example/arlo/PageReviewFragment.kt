@@ -181,7 +181,7 @@ class PageReviewFragment : Fragment() {
             val cameraFragment = CameraFragment.newInstanceForRecapture(
                 bookId = page.bookId,
                 pageIdToReplace = page.id,
-                expectedPageNumber = page.detectedPageNumber ?: page.pageNumber,
+                expectedPageNumber = page.detectedPageLabel?.toIntOrNull() ?: page.pageNumber,
                 returnToPosition = viewPager.currentItem
             )
 

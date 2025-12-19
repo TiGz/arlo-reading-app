@@ -35,7 +35,8 @@ class ClaudeOCRService(private val context: Context) {
 
     // Single page result from OCR
     data class PageOCRResult(
-        val pageNumber: Int?,
+        val pageLabel: String?,      // Page number as printed (e.g., "xi", "42")
+        val chapterTitle: String?,   // Chapter title if present
         val confidence: Float,
         val sentences: List<SentenceData>,
         val fullText: String
@@ -49,7 +50,8 @@ class ClaudeOCRService(private val context: Context) {
         val firstPage: PageOCRResult? get() = pages.firstOrNull()
         val sentences: List<SentenceData> get() = firstPage?.sentences ?: emptyList()
         val fullText: String get() = firstPage?.fullText ?: ""
-        val detectedPageNumber: Int? get() = firstPage?.pageNumber
+        val pageLabel: String? get() = firstPage?.pageLabel
+        val chapterTitle: String? get() = firstPage?.chapterTitle
         val confidence: Float get() = firstPage?.confidence ?: 1.0f
     }
 
@@ -174,7 +176,17 @@ class ClaudeOCRService(private val context: Context) {
         if (!response.isSuccessful) {
             val errorBody = response.body?.string() ?: "no body"
             Log.e(TAG, "API error ${response.code}: $errorBody")
-            throw ApiException(response.code, "API error: ${response.code}")
+
+            // Parse error response for specific error types
+            val errorMessage = parseErrorMessage(errorBody)
+
+            // Check for specific known errors
+            if (errorBody.contains("credit balance is too low") ||
+                errorBody.contains("purchase credits")) {
+                throw InsufficientCreditsException("Your Anthropic API credits have run out. Please add credits at console.anthropic.com")
+            }
+
+            throw ApiException(response.code, errorMessage ?: "API error: ${response.code}")
         }
 
         val responseBody = response.body?.string()
@@ -259,8 +271,11 @@ class ClaudeOCRService(private val context: Context) {
 
         val pages = pagesArray.map { pageElement ->
             val pageObj = pageElement.asJsonObject
-            val pageNumber = pageObj.get("pageNumber")?.let {
-                if (!it.isJsonNull) it.asInt else null
+            val pageLabel = pageObj.get("pageLabel")?.let {
+                if (!it.isJsonNull) it.asString else null
+            }
+            val chapterTitle = pageObj.get("chapterTitle")?.let {
+                if (!it.isJsonNull) it.asString else null
             }
             val confidence = pageObj.get("confidence")?.asFloat ?: 1.0f
             val sentencesArray = pageObj.getAsJsonArray("sentences")
@@ -274,7 +289,8 @@ class ClaudeOCRService(private val context: Context) {
             }
 
             PageOCRResult(
-                pageNumber = pageNumber,
+                pageLabel = pageLabel,
+                chapterTitle = chapterTitle,
                 confidence = confidence,
                 sentences = sentences,
                 fullText = sentences.joinToString(" ") { it.text }
@@ -287,9 +303,12 @@ class ClaudeOCRService(private val context: Context) {
     private fun parseOldFormatResponse(jsonStr: String): OCRResult {
         val json = JsonParser.parseString(jsonStr).asJsonObject
 
-        // Extract page number if present
-        val pageNumber = json.get("pageNumber")?.let { element ->
-            if (!element.isJsonNull) element.asInt else null
+        // Extract page label if present (string format)
+        val pageLabel = json.get("pageLabel")?.let { element ->
+            if (!element.isJsonNull) element.asString else null
+        }
+        val chapterTitle = json.get("chapterTitle")?.let { element ->
+            if (!element.isJsonNull) element.asString else null
         }
 
         val sentencesArray = json.getAsJsonArray("sentences")
@@ -305,8 +324,9 @@ class ClaudeOCRService(private val context: Context) {
 
         // Wrap in new format for consistency
         val page = PageOCRResult(
-            pageNumber = pageNumber,
-            confidence = 1.0f, // Old format doesn't have confidence
+            pageLabel = pageLabel,
+            chapterTitle = chapterTitle,
+            confidence = 1.0f,
             sentences = sentences,
             fullText = fullText
         )
@@ -332,7 +352,8 @@ class ClaudeOCRService(private val context: Context) {
 
         // Wrap in new format for consistency
         val page = PageOCRResult(
-            pageNumber = null,
+            pageLabel = null,
+            chapterTitle = null,
             confidence = 0.5f, // Fallback parsing = lower confidence
             sentences = sentences,
             fullText = text
@@ -340,8 +361,18 @@ class ClaudeOCRService(private val context: Context) {
         return OCRResult(listOf(page))
     }
 
+    private fun parseErrorMessage(errorBody: String): String? {
+        return try {
+            val json = JsonParser.parseString(errorBody).asJsonObject
+            json.getAsJsonObject("error")?.get("message")?.asString
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     class ApiException(val code: Int, message: String) : Exception(message)
     class InvalidApiKeyException(message: String) : Exception(message)
+    class InsufficientCreditsException(message: String) : Exception(message)
 
     companion object {
         private const val TAG = "ClaudeOCR"
@@ -354,7 +385,8 @@ Return a JSON object with this exact format:
 {
   "pages": [
     {
-      "pageNumber": 42,
+      "pageLabel": "xi",
+      "chapterTitle": "Prologue",
       "confidence": 0.92,
       "sentences": [
         {"text": "First sentence.", "isComplete": true},
@@ -372,10 +404,23 @@ PAGE DETECTION:
 - A partial page is one where text is visibly cut off at edges or significantly obscured
 - Order pages by their page number (left page before right page in a spread)
 
+PAGE LABEL (pageLabel):
+- Extract the printed page number EXACTLY as shown (e.g., "xi", "42", "102")
+- Include roman numerals as-is (i, ii, iii, iv, v, vi, vii, viii, ix, x, xi, xii...)
+- Use null if no page number is visible anywhere on the page
+- Look in all corners, top, and bottom of the page
+
+CHAPTER TITLE (chapterTitle):
+- Extract chapter/section headings if present (e.g., "Prologue", "Chapter 1", "The Beginning")
+- Use null if no chapter title is visible
+- Do NOT include book title or author name as chapter title
+- EXCLUDE from sentences but CAPTURE in this field
+
 CHILDREN'S BOOK TEXT:
 - Capture ALL text including large display text, speech bubbles, captions
 - Text may be in various sizes, fonts, colors, and orientations
-- EXCLUDE chapter titles at the top of pages (e.g., "Chapter 3", "Chapter Three")
+- IMPORTANT: Include decorative/stylized text that is part of the story (inscriptions, signs, carved text, memorial text, letters, notes)
+- These often appear in large ornate fonts and ARE part of the narrative - do NOT skip them
 - EXCLUDE book titles/headers that repeat on every page
 - EXCLUDE page footers with book title or author name
 - INCLUDE the story content, dialogue, and narrative text
@@ -385,11 +430,6 @@ CONFIDENCE SCORE (0.0 to 1.0):
 - 0.7-0.9: Good quality, minor issues (slight blur, small shadows)
 - 0.5-0.7: Readable but has issues (moderate blur, glare, finger shadows)
 - Below 0.5: Poor quality, significant text unclear
-
-PAGE NUMBER:
-- Extract the printed page number if visible (top, bottom, corners)
-- Use null if no page number is visible
-- Do NOT use chapter numbers as page numbers
 
 SENTENCE EXTRACTION:
 - Split into sentences ending with . ! or ?

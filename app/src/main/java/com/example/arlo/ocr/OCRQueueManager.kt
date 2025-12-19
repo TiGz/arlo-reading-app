@@ -51,6 +51,7 @@ class OCRQueueManager(
         data class Processing(val pageId: Long, val bookId: Long) : QueueState()
         data class Error(val pageId: Long, val message: String) : QueueState()
         data class MissingPages(val bookId: Long, val expectedPageNum: Int, val detectedPageNum: Int) : QueueState()
+        data class InsufficientCredits(val message: String) : QueueState()
 
         // Feedback states for UI
         data class LowConfidence(
@@ -151,12 +152,14 @@ class OCRQueueManager(
                     createAdditionalPage(page.bookId, pageResult, sequentialPageNum)
                 }
 
-                processedPageNumbers.add(pageResult.pageNumber)
+                // Extract numeric page number from label for tracking (null if roman numeral or no label)
+                val numericPage = pageResult.pageLabel?.toIntOrNull()
+                processedPageNumbers.add(numericPage)
 
                 // Track lowest confidence
                 if (pageResult.confidence < lowestConfidence) {
                     lowestConfidence = pageResult.confidence
-                    lowestConfidencePage = pageResult.pageNumber ?: sequentialPageNum
+                    lowestConfidencePage = numericPage ?: sequentialPageNum
                 }
 
                 // Queue TTS pre-caching for each page
@@ -177,8 +180,8 @@ class OCRQueueManager(
                 )
             }
 
-            // Calculate next expected page number
-            val lastDetectedPage = result.pages.lastOrNull()?.pageNumber
+            // Calculate next expected page number (only works for numeric labels)
+            val lastDetectedPage = result.pages.lastOrNull()?.pageLabel?.toIntOrNull()
             val nextExpected = lastDetectedPage?.plus(1)
 
             // Emit pages processed feedback
@@ -238,7 +241,6 @@ class OCRQueueManager(
         val sentencesJson = toJson(sentences)
         val fullText = sentences.joinToString(" ") { it.text }
         val lastComplete = sentences.lastOrNull()?.isComplete ?: true
-        val detectedPageNumber = pageResult.pageNumber
 
         // Update page with OCR result
         bookDao.updatePageWithOCRResult(
@@ -246,22 +248,24 @@ class OCRQueueManager(
             text = fullText,
             json = sentencesJson,
             complete = lastComplete,
-            detectedPageNum = detectedPageNumber,
+            pageLabel = pageResult.pageLabel,
+            chapterTitle = pageResult.chapterTitle,
             confidence = pageResult.confidence
         )
 
-        Log.d(TAG, "Processed first page ${page.id}: ${sentences.size} sentences, detected page number: $detectedPageNumber, confidence: ${pageResult.confidence}")
+        Log.d(TAG, "Processed first page ${page.id}: ${sentences.size} sentences, pageLabel: ${pageResult.pageLabel}, chapter: ${pageResult.chapterTitle}, confidence: ${pageResult.confidence}")
 
-        // Check for missing pages based on detected page numbers
-        if (detectedPageNumber != null && page.pageNumber > 1) {
+        // Check for missing pages based on detected page labels (only for numeric labels)
+        val currentPageNum = pageResult.pageLabel?.toIntOrNull()
+        if (currentPageNum != null && page.pageNumber > 1) {
             val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
-            val prevDetected = prevPage?.detectedPageNumber
-            if (prevDetected != null && detectedPageNumber > prevDetected + 1) {
-                Log.w(TAG, "Missing pages detected: expected ${prevDetected + 1}, got $detectedPageNumber")
+            val prevDetected = prevPage?.detectedPageLabel?.toIntOrNull()
+            if (prevDetected != null && currentPageNum > prevDetected + 1) {
+                Log.w(TAG, "Missing pages detected: expected ${prevDetected + 1}, got $currentPageNum")
                 _queueState.value = QueueState.MissingPages(
                     bookId = page.bookId,
                     expectedPageNum = prevDetected + 1,
-                    detectedPageNum = detectedPageNumber
+                    detectedPageNum = currentPageNum
                 )
             }
         }
@@ -275,15 +279,45 @@ class OCRQueueManager(
             text = pageResult.fullText,
             sentencesJson = toJson(pageResult.sentences),
             lastSentenceComplete = pageResult.sentences.lastOrNull()?.isComplete ?: true,
-            detectedPageNumber = pageResult.pageNumber,
+            detectedPageLabel = pageResult.pageLabel,
+            chapterTitle = pageResult.chapterTitle,
             confidence = pageResult.confidence,
             processingStatus = "COMPLETED"
         )
         val newPageId = bookDao.insertPage(newPage)
-        Log.d(TAG, "Created additional page $newPageId for book $bookId: sequential=$sequentialNum, detected=${pageResult.pageNumber}, confidence=${pageResult.confidence}")
+        Log.d(TAG, "Created additional page $newPageId for book $bookId: sequential=$sequentialNum, pageLabel=${pageResult.pageLabel}, chapter=${pageResult.chapterTitle}, confidence=${pageResult.confidence}")
     }
 
     private suspend fun handleProcessingError(page: Page, error: Exception) {
+        // Check for non-retryable errors first
+        when (error) {
+            is ClaudeOCRService.InsufficientCreditsException -> {
+                Log.e(TAG, "Insufficient credits - marking page ${page.id} as failed, no retry")
+                bookDao.updateProcessingStatusWithRetry(
+                    page.id,
+                    "FAILED",
+                    page.retryCount,
+                    error.message
+                )
+                _queueState.value = QueueState.InsufficientCredits(
+                    error.message ?: "API credits exhausted"
+                )
+                return
+            }
+            is ClaudeOCRService.InvalidApiKeyException -> {
+                Log.e(TAG, "Invalid API key - marking page ${page.id} as failed, no retry")
+                bookDao.updateProcessingStatusWithRetry(
+                    page.id,
+                    "FAILED",
+                    page.retryCount,
+                    error.message
+                )
+                _queueState.value = QueueState.Error(page.id, error.message ?: "Invalid API key")
+                return
+            }
+        }
+
+        // Retryable errors
         val newRetryCount = page.retryCount + 1
 
         if (newRetryCount <= MAX_RETRIES) {

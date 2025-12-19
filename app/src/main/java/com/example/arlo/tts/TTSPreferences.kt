@@ -31,6 +31,20 @@ class TTSPreferences(context: Context) {
         return prefs.getBoolean(KEY_AUTO_ADVANCE, DEFAULT_AUTO_ADVANCE)
     }
 
+    /**
+     * Kid mode locks the app into collaborative reading mode.
+     * When enabled, hides the collaborative toggle button (can't turn off collaborative mode).
+     * Voice and speed controls remain accessible.
+     * Unlocked via 5 taps on the book title (secret gesture for parents).
+     */
+    fun saveKidMode(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_KID_MODE, enabled).apply()
+    }
+
+    fun getKidMode(): Boolean {
+        return prefs.getBoolean(KEY_KID_MODE, DEFAULT_KID_MODE)
+    }
+
     fun saveKokoroVoice(voice: String) {
         prefs.edit().putString(KEY_KOKORO_VOICE, voice).apply()
     }
@@ -55,9 +69,11 @@ class TTSPreferences(context: Context) {
         private const val KEY_COLLABORATIVE_MODE = "collaborative_mode"
         private const val KEY_AUTO_ADVANCE = "auto_advance"
         private const val KEY_KOKORO_VOICE = "kokoro_voice"
+        private const val KEY_KID_MODE = "kid_mode"
         private const val DEFAULT_SPEECH_RATE = 1.0f
         private const val DEFAULT_COLLABORATIVE_MODE = true  // Default ON
         private const val DEFAULT_AUTO_ADVANCE = true
         private const val DEFAULT_KOKORO_VOICE = "bm_lewis"  // British male (Kokoro)
+        private const val DEFAULT_KID_MODE = true  // Default ON - kids locked into collaborative mode
     }
 }

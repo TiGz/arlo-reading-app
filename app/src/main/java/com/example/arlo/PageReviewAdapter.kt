@@ -37,9 +37,13 @@ class PageReviewAdapter : ListAdapter<Page, PageReviewAdapter.PageViewHolder>(Pa
         private val tvErrorMessage: TextView = itemView.findViewById(R.id.tvErrorMessage)
 
         fun bind(page: Page) {
-            // Page number display
-            val displayPageNum = page.detectedPageNumber ?: page.pageNumber
-            tvPageNumber.text = "Page $displayPageNum"
+            // Page number display - show detected label, chapter title, or sequence number
+            val pageDisplay = buildString {
+                page.chapterTitle?.let { append("$it • ") }
+                append("Page ")
+                append(page.detectedPageLabel ?: page.pageNumber.toString())
+            }
+            tvPageNumber.text = pageDisplay
 
             // Confidence display with color coding
             val confidencePercent = (page.confidence * 100).toInt()

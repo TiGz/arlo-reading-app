@@ -243,6 +243,20 @@ class CameraFragment : Fragment() {
                         is OCRQueueManager.QueueState.PagesProcessed -> {
                             handlePagesProcessed(state)
                         }
+                        is OCRQueueManager.QueueState.InsufficientCredits -> {
+                            Toast.makeText(
+                                requireContext(),
+                                "⚠️ ${state.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        is OCRQueueManager.QueueState.Error -> {
+                            Toast.makeText(
+                                requireContext(),
+                                "OCR Error: ${state.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                         else -> {}
                     }
                 }

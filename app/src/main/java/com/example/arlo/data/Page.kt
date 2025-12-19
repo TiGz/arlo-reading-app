@@ -22,11 +22,12 @@ data class Page(
     val bookId: Long,
     val text: String = "",
     val imagePath: String,
-    val pageNumber: Int,
-    val sentencesJson: String? = null,       // JSON array of SentenceData
+    val pageNumber: Int,                       // Sequence order in book (1, 2, 3...)
+    val sentencesJson: String? = null,         // JSON array of SentenceData
     val lastSentenceComplete: Boolean = true,  // For sentence continuation logic
-    val detectedPageNumber: Int? = null,      // Page number extracted from OCR (if visible)
-    val confidence: Float = 1.0f,            // OCR confidence score (0.0-1.0)
+    val detectedPageLabel: String? = null,     // Page label as printed (e.g., "xi", "42", "Prologue")
+    val chapterTitle: String? = null,          // Chapter title if present on page
+    val confidence: Float = 1.0f,              // OCR confidence score (0.0-1.0)
     // Queue management
     val processingStatus: String = "COMPLETED",  // PENDING, PROCESSING, COMPLETED, FAILED
     val errorMessage: String? = null,
