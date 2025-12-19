@@ -658,7 +658,8 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun isReady(): Boolean {
-        return isInitialized
+        // Ready if Android TTS initialized OR if Kokoro server is configured
+        return isInitialized || kokoroServerUrl != null
     }
 
     /**

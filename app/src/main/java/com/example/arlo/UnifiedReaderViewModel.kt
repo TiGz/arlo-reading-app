@@ -280,13 +280,18 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val sentences = parseSentencesForPage(page)
 
         ttsService.stop()
+        cancelSpeechRecognition()
         _state.value = current.copy(
             currentPageIndex = pageIndex,
             currentSentenceIndex = 0,
             sentences = sentences,
             isPlaying = false,
             needsMorePages = false,
-            highlightRange = null
+            highlightRange = null,
+            targetWord = null,
+            attemptCount = 0,
+            lastAttemptSuccess = null,
+            collaborativeState = CollaborativeState.IDLE
         )
         saveReadingPosition()
     }
@@ -304,7 +309,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 highlightRange = null,
                 targetWord = null,  // Clear until TTS reaches the word
                 attemptCount = 0,
-                lastAttemptSuccess = null
+                lastAttemptSuccess = null,
+                collaborativeState = CollaborativeState.IDLE  // Reset collaborative state on navigation
             )
             saveReadingPosition()
         } else {
@@ -333,7 +339,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 highlightRange = null,
                 targetWord = null,  // Clear until TTS reaches the word
                 attemptCount = 0,
-                lastAttemptSuccess = null
+                lastAttemptSuccess = null,
+                collaborativeState = CollaborativeState.IDLE  // Reset collaborative state on navigation
             )
             saveReadingPosition()
         } else {
@@ -349,7 +356,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     currentSentenceIndex = lastSentenceIndex,
                     sentences = prevSentences,
                     needsMorePages = false,
-                    highlightRange = null
+                    highlightRange = null,
+                    targetWord = null,
+                    attemptCount = 0,
+                    lastAttemptSuccess = null,
+                    collaborativeState = CollaborativeState.IDLE
                 )
                 saveReadingPosition()
             }
@@ -421,6 +432,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     }
                 }
             }
+        } else {
+            Log.e(TAG, "TTS service not ready, cannot speak")
         }
     }
 
@@ -778,7 +791,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             return
         }
 
-        if (!ttsService.isReady()) return
+        if (!ttsService.isReady()) {
+            Log.e(TAG, "TTS service not ready, cannot speak")
+            return
+        }
 
         // Set up word highlighting callback
         ttsService.setOnRangeStartListener { start, end ->
