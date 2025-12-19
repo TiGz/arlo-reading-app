@@ -440,6 +440,38 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
+     * Speak current sentence and auto-advance to next, regardless of autoAdvance setting.
+     * Used for short sentences in collaborative mode where collaboration is skipped.
+     */
+    private fun speakCurrentSentenceAndAutoAdvance() {
+        val sentence = _state.value.currentSentence ?: return
+
+        _state.value = _state.value.copy(isPlaying = true)
+
+        if (ttsService.isReady()) {
+            // Set up word highlighting callback
+            ttsService.setOnRangeStartListener { start, end ->
+                _state.value = _state.value.copy(highlightRange = Pair(start, end))
+            }
+
+            viewModelScope.launch {
+                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
+                    // Always auto-advance after short sentences in collaborative mode
+                    if (_state.value.isPlaying) {
+                        nextSentence()
+                        if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                            // Continue with collaborative mode for next sentence
+                            speakCurrentSentenceCollaborative()
+                        }
+                    }
+                }
+            }
+        } else {
+            Log.e(TAG, "TTS service not ready, cannot speak")
+        }
+    }
+
+    /**
      * Start TTS from a specific sentence index (for touch-to-read in full page mode).
      */
     fun speakFromSentence(sentenceIndex: Int) {
@@ -547,7 +579,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Extract target words from sentence for collaborative reading.
-     * If the last word is single-syllable, extract last 2 words for better recognition.
+     * Targets ~3 syllables total to give speech recognizer enough audio:
+     * - If last word ≥3 syllables: use just that word
+     * - Otherwise sum syllables of last 2 words; if ≥3, use last 2
+     * - If both last 2 words are 1 syllable each: use last 3 words
      * Returns Pair(targetWords, rangeInSentence) where range is character indices.
      */
     private fun extractTargetWords(sentence: String): Pair<String, IntRange> {
@@ -560,25 +595,60 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         }
 
         val lastWord = words.last()
-        val lastWordClean = normalizeWord(lastWord)
+        val lastWordSyllables = countSyllables(normalizeWord(lastWord))
 
-        // Check if last word is single-syllable (use vowel count as heuristic)
-        val isSingleSyllable = countSyllables(lastWordClean) <= 1
-
-        return if (isSingleSyllable && words.size >= 2) {
-            // Use last 2 words for short words like "it", "the", "is", etc.
-            val secondLastSpaceIndex = trimmed.lastIndexOf(' ', trimmed.lastIndexOf(' ') - 1)
-            if (secondLastSpaceIndex == -1) {
-                // Only 2 words total - user reads both
-                Pair(trimmed, 0 until trimmed.length)
-            } else {
-                val lastTwoWords = trimmed.substring(secondLastSpaceIndex + 1)
-                Pair(lastTwoWords, (secondLastSpaceIndex + 1) until trimmed.length)
-            }
-        } else {
-            // Use just the last word
+        // Rule 1: If last word has ≥3 syllables, use just that
+        if (lastWordSyllables >= 3) {
             val lastSpaceIndex = trimmed.lastIndexOf(' ')
-            Pair(lastWord, (lastSpaceIndex + 1) until trimmed.length)
+            Log.d(TAG, "extractTargetWords: '$lastWord' has $lastWordSyllables syllables, using just that")
+            return Pair(lastWord, (lastSpaceIndex + 1) until trimmed.length)
+        }
+
+        // Need more words - check last 2
+        if (words.size >= 2) {
+            val secondLastWord = words[words.size - 2]
+            val secondLastSyllables = countSyllables(normalizeWord(secondLastWord))
+            val twoWordSyllables = lastWordSyllables + secondLastSyllables
+
+            // Rule 2: If last 2 words have ≥3 syllables total, use them
+            if (twoWordSyllables >= 3) {
+                val secondLastSpaceIndex = trimmed.lastIndexOf(' ', trimmed.lastIndexOf(' ') - 1)
+                Log.d(TAG, "extractTargetWords: '$secondLastWord $lastWord' has $twoWordSyllables syllables, using last 2")
+                return if (secondLastSpaceIndex == -1) {
+                    Pair(trimmed, 0 until trimmed.length)
+                } else {
+                    val lastTwoWords = trimmed.substring(secondLastSpaceIndex + 1)
+                    Pair(lastTwoWords, (secondLastSpaceIndex + 1) until trimmed.length)
+                }
+            }
+
+            // Rule 3: Both words are short (total <3 syllables) - try 3 words
+            if (words.size >= 3) {
+                val thirdLastWord = words[words.size - 3]
+                val thirdLastSyllables = countSyllables(normalizeWord(thirdLastWord))
+                val threeWordSyllables = twoWordSyllables + thirdLastSyllables
+
+                Log.d(TAG, "extractTargetWords: '$thirdLastWord $secondLastWord $lastWord' has $threeWordSyllables syllables, using last 3")
+                // Find where third-last word starts
+                var spaceCount = 0
+                var idx = trimmed.length - 1
+                while (idx > 0 && spaceCount < 3) {
+                    if (trimmed[idx] == ' ') spaceCount++
+                    if (spaceCount < 3) idx--
+                }
+                val startIdx = if (spaceCount == 3) idx + 1 else 0
+                return Pair(trimmed.substring(startIdx), startIdx until trimmed.length)
+            }
+        }
+
+        // Fallback: use last 2 words (or sentence if too short)
+        val secondLastSpaceIndex = trimmed.lastIndexOf(' ', trimmed.lastIndexOf(' ') - 1)
+        Log.d(TAG, "extractTargetWords: fallback to last 2 words")
+        return if (secondLastSpaceIndex == -1) {
+            Pair(trimmed, 0 until trimmed.length)
+        } else {
+            val lastTwoWords = trimmed.substring(secondLastSpaceIndex + 1)
+            Pair(lastTwoWords, (secondLastSpaceIndex + 1) until trimmed.length)
         }
     }
 
@@ -722,9 +792,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         }
 
         // Try 2: Two spoken words concatenated match target word
-        // (handles "wounded" being heard as "when did")
+        // (handles "wounded" being heard as "when did", "fearsome" as "play some")
         if (spokenIdx + 1 < spoken.size) {
             val twoWordConcat = spoken[spokenIdx] + spoken[spokenIdx + 1]
+            Log.d(TAG, "Trying concat: '${spoken[spokenIdx]}+${spoken[spokenIdx + 1]}' = '$twoWordConcat' vs '$targetWord'")
             if (isPhoneticMatch(twoWordConcat, targetWord)) {
                 Log.d(TAG, "Concat match: '${spoken[spokenIdx]}+${spoken[spokenIdx + 1]}' ≈ '$targetWord'")
                 if (tryMatchFromPosition(spoken, spokenIdx + 2, target, targetIdx + 1)) {
@@ -784,7 +855,56 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             return true
         }
 
+        // Levenshtein distance for near-matches (handles transcription errors like "playsome" vs "fearsome")
+        // Allow more edits for longer words
+        val maxDistance = when {
+            target.length <= 4 -> 1
+            target.length <= 7 -> 2
+            else -> 3
+        }
+        val distance = levenshteinDistance(spoken.lowercase(), target.lowercase())
+        if (distance <= maxDistance) {
+            Log.d(TAG, "Levenshtein match: '$spoken' ≈ '$target' (distance=$distance, max=$maxDistance)")
+            return true
+        }
+
         return false
+    }
+
+    /**
+     * Calculate Levenshtein edit distance between two strings.
+     * Returns the minimum number of single-character edits (insertions, deletions, substitutions)
+     * needed to transform one string into the other.
+     */
+    private fun levenshteinDistance(s1: String, s2: String): Int {
+        val len1 = s1.length
+        val len2 = s2.length
+
+        // Optimization: if one string is empty, distance is the length of the other
+        if (len1 == 0) return len2
+        if (len2 == 0) return len1
+
+        // Use two rows instead of full matrix for space efficiency
+        var prevRow = IntArray(len2 + 1) { it }
+        var currRow = IntArray(len2 + 1)
+
+        for (i in 1..len1) {
+            currRow[0] = i
+            for (j in 1..len2) {
+                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+                currRow[j] = minOf(
+                    prevRow[j] + 1,      // deletion
+                    currRow[j - 1] + 1,  // insertion
+                    prevRow[j - 1] + cost // substitution
+                )
+            }
+            // Swap rows
+            val temp = prevRow
+            prevRow = currRow
+            currRow = temp
+        }
+
+        return prevRow[len2]
     }
 
     // Store target words outside of state to avoid race conditions with TTS callbacks
@@ -801,6 +921,15 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         // Skip incomplete sentences - use normal TTS
         if (!sentence.isComplete && _state.value.currentSentenceIndex == _state.value.sentences.lastIndex) {
             speakCurrentSentence()
+            return
+        }
+
+        // Skip very short sentences (4 words or less) - collaborative mode doesn't make sense
+        // TTS reads the whole sentence and auto-advances
+        val wordCount = sentence.text.trim().split(" ").size
+        if (wordCount <= 4) {
+            Log.d(TAG, "Short sentence ($wordCount words), skipping collaboration: '${sentence.text}'")
+            speakCurrentSentenceAndAutoAdvance()
             return
         }
 
