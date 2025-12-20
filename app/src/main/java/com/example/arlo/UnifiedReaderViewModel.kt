@@ -457,6 +457,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         }
 
         if (ttsService.isReady()) {
+            // Trigger lookahead caching for upcoming sentences
+            triggerLookaheadCaching()
+
             // Set up word highlighting callback
             ttsService.setOnRangeStartListener { start, end ->
                 _state.value = _state.value.copy(highlightRange = Pair(start, end))
@@ -494,6 +497,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         _state.value = _state.value.copy(isPlaying = true)
 
         if (ttsService.isReady()) {
+            // Trigger lookahead caching for upcoming sentences
+            triggerLookaheadCaching()
+
             // Set up word highlighting callback
             ttsService.setOnRangeStartListener { start, end ->
                 _state.value = _state.value.copy(highlightRange = Pair(start, end))
@@ -514,6 +520,16 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         } else {
             Log.e(TAG, "TTS service not ready, cannot speak")
         }
+    }
+
+    /**
+     * Trigger lookahead caching for the next N sentences.
+     * Called when TTS playback starts to ensure upcoming sentences are pre-cached.
+     */
+    private fun triggerLookaheadCaching() {
+        val current = _state.value
+        val sentenceTexts = current.sentences.map { it.text }
+        ttsCacheManager.ensureLookaheadCached(sentenceTexts, current.currentSentenceIndex)
     }
 
     /**
@@ -1013,6 +1029,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             return
         }
 
+        // Trigger lookahead caching for upcoming sentences
+        triggerLookaheadCaching()
+
         // Set up word highlighting callback
         ttsService.setOnRangeStartListener { start, end ->
             _state.value = _state.value.copy(highlightRange = Pair(start, end))
@@ -1023,17 +1042,18 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             val firstTargetWord = targetWords.split(" ").first()
             var stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
 
-            // Cache miss - pre-cache the sentence first, then find timestamp
+            // Cache miss - synthesize the sentence first, then find timestamp from result
             if (stopAtMs == null) {
-                Log.d(TAG, "Collaborative: cache miss, pre-caching sentence first")
+                Log.d(TAG, "Collaborative: cache miss, synthesizing sentence first")
                 try {
                     val kokoroVoice = ttsService.getKokoroVoice()
                     val result = ttsService.synthesizeKokoroForCache(sentence.text, kokoroVoice)
+                    // Find timestamp directly from the synthesis result (avoids race with async cache save)
+                    stopAtMs = ttsCacheManager.findWordTimestampInJson(result.timestampsJson, firstTargetWord)
+                    // Save to cache in background for future playback
                     ttsCacheManager.saveToCache(sentence.text, result.audioBytes, result.timestampsJson)
-                    // Now find the timestamp in the freshly cached audio
-                    stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to pre-cache sentence: ${e.message}")
+                    Log.e(TAG, "Failed to synthesize sentence: ${e.message}")
                 }
             }
 

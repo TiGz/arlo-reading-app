@@ -30,6 +30,79 @@ class TTSCacheManager(
         File(context.filesDir, "tts_cache").also { it.mkdirs() }
     }
 
+    // Track sentences currently being cached to avoid duplicate requests
+    private val cachingInProgress = mutableSetOf<String>()
+
+    companion object {
+        private const val TAG = "TTSCacheManager"
+        private const val LOOKAHEAD_COUNT = 5  // Cache next 5 sentences
+    }
+
+    /**
+     * Ensure the next N sentences are cached, starting from the current position.
+     * Called when TTS playback starts to pre-cache upcoming sentences.
+     * Skips sentences already cached or currently being cached.
+     */
+    fun ensureLookaheadCached(sentences: List<String>, currentIndex: Int) {
+        if (!ttsPreferences.isKokoroVoice()) {
+            Log.d(TAG, "Skipping lookahead cache - using on-device voice")
+            return
+        }
+
+        val voice = ttsPreferences.getKokoroVoice()
+
+        // Get the next LOOKAHEAD_COUNT sentences that need caching
+        val sentencesToCache = sentences
+            .drop(currentIndex + 1)  // Skip current (already playing)
+            .take(LOOKAHEAD_COUNT)
+            .filter { it.isNotBlank() }
+            .filter { sentence ->
+                val cacheFile = getCacheFile(sentence, voice)
+                val needsCaching = !cacheFile.exists() && !cachingInProgress.contains(sentence)
+                needsCaching
+            }
+
+        if (sentencesToCache.isEmpty()) {
+            Log.d(TAG, "Lookahead: all next $LOOKAHEAD_COUNT sentences already cached")
+            return
+        }
+
+        Log.d(TAG, "Lookahead: caching ${sentencesToCache.size} sentences starting from index ${currentIndex + 1}")
+
+        scope.launch {
+            sentencesToCache.forEachIndexed { index, sentence ->
+                // Mark as in-progress to avoid duplicate requests
+                synchronized(cachingInProgress) {
+                    if (cachingInProgress.contains(sentence)) {
+                        Log.d(TAG, "Lookahead: sentence ${index + 1} already being cached, skipping")
+                        return@forEachIndexed
+                    }
+                    cachingInProgress.add(sentence)
+                }
+
+                try {
+                    val cacheFile = getCacheFile(sentence, voice)
+                    if (cacheFile.exists()) {
+                        Log.d(TAG, "Lookahead: sentence ${index + 1} cached by another request")
+                        return@forEachIndexed
+                    }
+
+                    val result = ttsService.synthesizeKokoroForCache(sentence, voice)
+                    cacheFile.writeBytes(result.audioBytes)
+                    val timestampsFile = File(cacheFile.absolutePath + ".json")
+                    timestampsFile.writeText(result.timestampsJson)
+                    Log.d(TAG, "Lookahead cached: ${sentence.take(40)}...")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Lookahead failed for sentence ${index + 1}: ${e.message}")
+                } finally {
+                    synchronized(cachingInProgress) {
+                        cachingInProgress.remove(sentence)
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * Queue sentences for background TTS caching.
      * Processes sentences SEQUENTIALLY (one at a time) to avoid overwhelming the server.
@@ -249,7 +322,75 @@ class TTSCacheManager(
         val timestampsJson: String
     )
 
-    companion object {
-        private const val TAG = "TTSCacheManager"
+    /**
+     * Find the start timestamp of a target word in JSON timestamps string.
+     * Used when we have the timestamps in memory (e.g., from fresh synthesis)
+     * without needing them to be cached first.
+     */
+    fun findWordTimestampInJson(timestampsJson: String, targetWord: String, findLast: Boolean = true): Long? {
+        return try {
+            val array = org.json.JSONArray(timestampsJson)
+            val targetNormalized = targetWord.lowercase().replace(Regex("[^a-z']"), "")
+
+            // Log all available timestamps for debugging
+            val availableWords = mutableListOf<String>()
+            for (i in 0 until array.length()) {
+                availableWords.add(array.getJSONObject(i).getString("word"))
+            }
+            Log.d(TAG, "Looking for '$targetWord' (findLast=$findLast) in timestamps: $availableWords")
+
+            // First pass: exact match - find last occurrence if findLast=true
+            var lastMatchTime: Double? = null
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val word = obj.getString("word")
+                val wordNormalized = word.lowercase().replace(Regex("[^a-z']"), "")
+
+                if (wordNormalized == targetNormalized) {
+                    val startTime = obj.getDouble("start_time")
+                    if (findLast) {
+                        lastMatchTime = startTime  // Keep updating to get last match
+                    } else {
+                        Log.d(TAG, "Found exact match for '$targetWord' at ${startTime}s")
+                        return (startTime * 1000).toLong()
+                    }
+                }
+            }
+
+            if (lastMatchTime != null) {
+                Log.d(TAG, "Found last exact match for '$targetWord' at ${lastMatchTime}s")
+                return (lastMatchTime * 1000).toLong()
+            }
+
+            // Second pass: target word contained in timestamp word
+            var lastPartialMatchTime: Double? = null
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val word = obj.getString("word")
+                val wordNormalized = word.lowercase().replace(Regex("[^a-z']"), "")
+
+                if (wordNormalized.contains(targetNormalized) && targetNormalized.length >= 3) {
+                    val startTime = obj.getDouble("start_time")
+                    if (findLast) {
+                        lastPartialMatchTime = startTime
+                    } else {
+                        Log.d(TAG, "Found partial match: '$targetWord' in '$word' at ${startTime}s")
+                        return (startTime * 1000).toLong()
+                    }
+                }
+            }
+
+            if (lastPartialMatchTime != null) {
+                Log.d(TAG, "Found last partial match for '$targetWord' at ${lastPartialMatchTime}s")
+                return (lastPartialMatchTime * 1000).toLong()
+            }
+
+            Log.d(TAG, "Word '$targetWord' not found in provided timestamps")
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "Error parsing timestamps: ${e.message}")
+            null
+        }
     }
+
 }

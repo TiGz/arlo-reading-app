@@ -98,6 +98,9 @@
     <color name="primary_burgundy">#00BCD4</color>
     <color name="secondary_gold">#FFD93D</color>
 
+    <!-- App Icon Background -->
+    <color name="ic_launcher_background">#50C8BE</color>
+
     <!-- Legacy Material Colors -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>

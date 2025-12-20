@@ -224,6 +224,7 @@
                         android:id="@+id/switchCollaborative"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:checked="true"
                         app:trackTint="@color/switch_track_color"
                         app:thumbTint="@color/accent_teal" />
                 </LinearLayout>
@@ -261,6 +262,7 @@
                         android:id="@+id/switchStreakBonuses"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:checked="true"
                         app:trackTint="@color/switch_track_color"
                         app:thumbTint="@color/accent_teal" />
                 </LinearLayout>
@@ -297,6 +299,7 @@
                         android:id="@+id/switchKidMode"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:checked="true"
                         app:trackTint="@color/switch_track_color"
                         app:thumbTint="@color/accent_teal" />
                 </LinearLayout>
