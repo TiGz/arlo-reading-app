@@ -17,9 +17,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CollaborativeAttempt::class,
         Achievement::class,
         WeeklyGoal::class,
-        BookStats::class
+        BookStats::class,
+        // New entities for gamification v2
+        StreakState::class,
+        ParentSettings::class,
+        ReadingSession::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(SentenceListConverter::class)
@@ -179,6 +183,94 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // ============ MODIFY daily_stats - add star types and points ============
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN goldStars INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN silverStars INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN bronzeStars INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN totalPoints INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN dailyPointsTarget INTEGER NOT NULL DEFAULT 100")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN goalMet INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN activeReadingTimeMs INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN totalAppTimeMs INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN sessionCount INTEGER NOT NULL DEFAULT 0")
+
+                // Migrate existing starsEarned to goldStars (they were all first-try)
+                db.execSQL("UPDATE daily_stats SET goldStars = starsEarned, totalPoints = starsEarned * 5")
+
+                // ============ MODIFY collaborative_attempts - add star tracking ============
+                db.execSQL("ALTER TABLE collaborative_attempts ADD COLUMN starType TEXT")
+                db.execSQL("ALTER TABLE collaborative_attempts ADD COLUMN pointsEarned INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE collaborative_attempts ADD COLUMN ttsPronouncedWord INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE collaborative_attempts ADD COLUMN sessionStreak INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE collaborative_attempts ADD COLUMN streakBonus INTEGER NOT NULL DEFAULT 0")
+
+                // Migrate existing first-try successes to GOLD star type
+                db.execSQL("""
+                    UPDATE collaborative_attempts
+                    SET starType = 'GOLD', pointsEarned = 5
+                    WHERE isFirstTrySuccess = 1
+                """)
+
+                // ============ CREATE streak_state table ============
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS streak_state (
+                        streakType TEXT PRIMARY KEY NOT NULL,
+                        currentStreak INTEGER NOT NULL DEFAULT 0,
+                        bestStreak INTEGER NOT NULL DEFAULT 0,
+                        lastActivityDate TEXT NOT NULL DEFAULT '',
+                        lastActivityWeek TEXT NOT NULL DEFAULT '',
+                        lastActivityMonth TEXT NOT NULL DEFAULT '',
+                        lastActivityTimestamp INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+
+                // Initialize streak state rows
+                val types = listOf("session", "day", "week", "month", "allTime")
+                types.forEach { type ->
+                    db.execSQL("INSERT OR IGNORE INTO streak_state (streakType) VALUES ('$type')")
+                }
+
+                // ============ CREATE parent_settings table ============
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS parent_settings (
+                        id INTEGER PRIMARY KEY NOT NULL DEFAULT 1,
+                        dailyPointsTarget INTEGER NOT NULL DEFAULT 100,
+                        weeklyDaysTarget INTEGER NOT NULL DEFAULT 5,
+                        enableStreakBonuses INTEGER NOT NULL DEFAULT 1,
+                        maxStreakMultiplier REAL NOT NULL DEFAULT 2.0,
+                        kidModeEnabled INTEGER NOT NULL DEFAULT 1,
+                        pinCode TEXT,
+                        lastModified INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+                // Insert default settings
+                db.execSQL("INSERT OR IGNORE INTO parent_settings (id) VALUES (1)")
+
+                // ============ CREATE reading_sessions table ============
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS reading_sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        date TEXT NOT NULL,
+                        startTimestamp INTEGER NOT NULL,
+                        endTimestamp INTEGER,
+                        durationMs INTEGER NOT NULL DEFAULT 0,
+                        bookId INTEGER,
+                        pagesRead INTEGER NOT NULL DEFAULT 0,
+                        sentencesRead INTEGER NOT NULL DEFAULT 0,
+                        goldStars INTEGER NOT NULL DEFAULT 0,
+                        silverStars INTEGER NOT NULL DEFAULT 0,
+                        bronzeStars INTEGER NOT NULL DEFAULT 0,
+                        pointsEarned INTEGER NOT NULL DEFAULT 0,
+                        isActive INTEGER NOT NULL DEFAULT 1
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_reading_sessions_date ON reading_sessions(date)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_reading_sessions_bookId ON reading_sessions(bookId)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -186,7 +278,10 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "arlo_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(
+                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9
+                )
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

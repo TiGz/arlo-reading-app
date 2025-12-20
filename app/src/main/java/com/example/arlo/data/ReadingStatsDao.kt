@@ -159,6 +159,133 @@ interface ReadingStatsDao {
         WHERE date BETWEEN :startDate AND :endDate
     """)
     suspend fun getPeriodStats(startDate: String, endDate: String): LifetimeStatsResult?
+
+    // ==================== NEW: STAR BREAKDOWN QUERIES ====================
+
+    @Query("""
+        SELECT
+            SUM(goldStars) as goldStars,
+            SUM(silverStars) as silverStars,
+            SUM(bronzeStars) as bronzeStars,
+            SUM(totalPoints) as totalPoints
+        FROM daily_stats
+    """)
+    suspend fun getLifetimeStarBreakdown(): StarBreakdownResult?
+
+    @Query("""
+        SELECT
+            SUM(goldStars) as goldStars,
+            SUM(silverStars) as silverStars,
+            SUM(bronzeStars) as bronzeStars,
+            SUM(totalPoints) as totalPoints
+        FROM daily_stats
+        WHERE date = :date
+    """)
+    suspend fun getDayStarBreakdown(date: String): StarBreakdownResult?
+
+    @Query("""
+        SELECT
+            SUM(totalPoints) as totalPoints,
+            SUM(activeReadingTimeMs) as totalActiveTimeMs,
+            COUNT(CASE WHEN totalPoints > 0 THEN 1 END) as daysWithActivity,
+            SUM(goldStars) as goldStars,
+            SUM(silverStars) as silverStars,
+            SUM(bronzeStars) as bronzeStars
+        FROM daily_stats
+        WHERE date BETWEEN :startDate AND :endDate
+    """)
+    suspend fun getWeeklySummary(startDate: String, endDate: String): WeeklySummaryResult?
+
+    @Query("SELECT SUM(totalPoints) FROM daily_stats")
+    fun observeTotalPoints(): Flow<Int?>
+
+    @Query("SELECT SUM(totalPoints) FROM daily_stats")
+    suspend fun getTotalPoints(): Int?
+
+    // ==================== STREAK STATE ====================
+
+    @Query("SELECT * FROM streak_state WHERE streakType = :streakType")
+    suspend fun getStreakState(streakType: String): StreakState?
+
+    @Query("SELECT * FROM streak_state WHERE streakType = :streakType")
+    fun observeStreakState(streakType: String): Flow<StreakState?>
+
+    @Query("SELECT * FROM streak_state")
+    suspend fun getAllStreakStates(): List<StreakState>
+
+    @Query("SELECT * FROM streak_state")
+    fun observeAllStreakStates(): Flow<List<StreakState>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStreakState(streakState: StreakState)
+
+    @Query("UPDATE streak_state SET currentStreak = :currentStreak, bestStreak = MAX(bestStreak, :currentStreak), lastActivityDate = :date, lastActivityTimestamp = :timestamp WHERE streakType = :streakType")
+    suspend fun updateStreakState(streakType: String, currentStreak: Int, date: String, timestamp: Long)
+
+    // ==================== PARENT SETTINGS ====================
+
+    @Query("SELECT * FROM parent_settings WHERE id = 1")
+    suspend fun getParentSettings(): ParentSettings?
+
+    @Query("SELECT * FROM parent_settings WHERE id = 1")
+    fun observeParentSettings(): Flow<ParentSettings?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertParentSettings(settings: ParentSettings)
+
+    @Query("UPDATE parent_settings SET dailyPointsTarget = :target, lastModified = :timestamp WHERE id = 1")
+    suspend fun updateDailyPointsTarget(target: Int, timestamp: Long = System.currentTimeMillis())
+
+    // ==================== READING SESSIONS ====================
+
+    @Insert
+    suspend fun insertReadingSession(session: ReadingSession): Long
+
+    @Query("SELECT * FROM reading_sessions WHERE id = :sessionId")
+    suspend fun getReadingSession(sessionId: Long): ReadingSession?
+
+    @Query("SELECT * FROM reading_sessions WHERE isActive = 1 ORDER BY startTimestamp DESC LIMIT 1")
+    suspend fun getActiveSession(): ReadingSession?
+
+    @Query("SELECT * FROM reading_sessions WHERE date = :date ORDER BY startTimestamp DESC")
+    suspend fun getSessionsForDate(date: String): List<ReadingSession>
+
+    @Query("SELECT * FROM reading_sessions WHERE date BETWEEN :startDate AND :endDate ORDER BY startTimestamp DESC")
+    suspend fun getSessionsForRange(startDate: String, endDate: String): List<ReadingSession>
+
+    @Update
+    suspend fun updateReadingSession(session: ReadingSession)
+
+    @Query("""
+        UPDATE reading_sessions
+        SET endTimestamp = :endTimestamp,
+            durationMs = :durationMs,
+            isActive = 0,
+            goldStars = :goldStars,
+            silverStars = :silverStars,
+            bronzeStars = :bronzeStars,
+            pointsEarned = :pointsEarned,
+            pagesRead = :pagesRead,
+            sentencesRead = :sentencesRead
+        WHERE id = :sessionId
+    """)
+    suspend fun endReadingSession(
+        sessionId: Long,
+        endTimestamp: Long,
+        durationMs: Long,
+        goldStars: Int,
+        silverStars: Int,
+        bronzeStars: Int,
+        pointsEarned: Int,
+        pagesRead: Int,
+        sentencesRead: Int
+    )
+
+    @Query("SELECT SUM(durationMs) FROM reading_sessions WHERE date = :date")
+    suspend fun getTotalReadingTimeForDate(date: String): Long?
+
+    @Query("SELECT SUM(durationMs) FROM reading_sessions")
+    suspend fun getTotalReadingTimeAllTime(): Long?
 }
 
 /**
@@ -170,4 +297,26 @@ data class LifetimeStatsResult(
     val totalSentences: Int?,
     val totalPages: Int?,
     val bestStreak: Int?
+)
+
+/**
+ * Result class for star breakdown query.
+ */
+data class StarBreakdownResult(
+    val goldStars: Int?,
+    val silverStars: Int?,
+    val bronzeStars: Int?,
+    val totalPoints: Int?
+)
+
+/**
+ * Result class for weekly summary query.
+ */
+data class WeeklySummaryResult(
+    val totalPoints: Int?,
+    val totalActiveTimeMs: Long?,
+    val daysWithActivity: Int?,
+    val goldStars: Int?,
+    val silverStars: Int?,
+    val bronzeStars: Int?
 )

@@ -17,6 +17,7 @@ import com.example.arlo.data.Page
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.data.SentenceData
 import com.example.arlo.data.SessionStats
+import com.example.arlo.data.StarType
 import com.example.arlo.tts.TTSPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -114,6 +115,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val lastAttemptSuccess: Boolean? = null,  // null = no attempt yet, true = success, false = failure
         val micLevel: Int = 0,  // 0-100 mic input level for visual feedback
         val isSpeakingTargetWord: Boolean = false,  // True when TTS is reading target word after failures
+        val ttsHasPronouncedTargetWord: Boolean = false,  // True if TTS has read this word (affects star color)
         // Kid mode - locks collaborative mode ON and hides toggle button
         val kidMode: Boolean = true,  // Default ON - kids can't turn off collaborative mode
         // Gamification stats for current session
@@ -137,6 +139,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     val state: StateFlow<ReaderState> = _state.asStateFlow()
 
     private var bookId: Long = -1L
+
+    // Reading session tracking for time measurement
+    private var currentSessionId: Long? = null
+    private var sessionPagesRead: Int = 0
+    private var sessionSentencesRead: Int = 0
 
     fun loadBook(bookId: Long, hasAudioPermission: Boolean) {
         this.bookId = bookId
@@ -316,6 +323,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             needsMorePages = false,
             highlightRange = null,
             targetWord = null,
+            ttsHasPronouncedTargetWord = false,  // Reset for new word
             attemptCount = 0,
             lastAttemptSuccess = null,
             collaborativeState = CollaborativeState.IDLE
@@ -330,9 +338,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val nextIndex = current.currentSentenceIndex + 1
 
         // Record that we completed the current sentence (for stats)
-        viewModelScope.launch(Dispatchers.IO) {
-            statsRepository.recordSentenceRead()
-        }
+        trackSentenceRead()
 
         if (nextIndex < current.sentences.size) {
             // Move to next sentence on same page
@@ -340,6 +346,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 currentSentenceIndex = nextIndex,
                 highlightRange = null,
                 targetWord = null,  // Clear until TTS reaches the word
+                ttsHasPronouncedTargetWord = false,  // Reset for new word
                 attemptCount = 0,
                 lastAttemptSuccess = null,
                 collaborativeState = CollaborativeState.IDLE  // Reset collaborative state on navigation
@@ -349,10 +356,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Try to move to next page
             val nextPageIndex = current.currentPageIndex + 1
             if (nextPageIndex < current.pages.size) {
+                // Track page completion when moving forward
+                trackPageCompleted()
                 // Preserve playing state when auto-advancing between pages
                 moveToPage(nextPageIndex, preservePlayingState = true)
             } else {
                 // No more pages - need to scan more
+                // Still track completion of the last page
+                trackPageCompleted()
                 _state.value = current.copy(needsMorePages = true, isPlaying = false)
                 ttsService.stop()
             }
@@ -371,6 +382,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 currentSentenceIndex = prevIndex,
                 highlightRange = null,
                 targetWord = null,  // Clear until TTS reaches the word
+                ttsHasPronouncedTargetWord = false,  // Reset for new word
                 attemptCount = 0,
                 lastAttemptSuccess = null,
                 collaborativeState = CollaborativeState.IDLE  // Reset collaborative state on navigation
@@ -391,6 +403,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     needsMorePages = false,
                     highlightRange = null,
                     targetWord = null,
+                    ttsHasPronouncedTargetWord = false,  // Reset for new word
                     attemptCount = 0,
                     lastAttemptSuccess = null,
                     collaborativeState = CollaborativeState.IDLE
@@ -412,6 +425,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 isPlaying = false,
                 collaborativeState = CollaborativeState.IDLE,
                 targetWord = null,
+                ttsHasPronouncedTargetWord = false,  // Reset for new word
                 attemptCount = 0,
                 lastAttemptSuccess = null
             )
@@ -591,6 +605,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 collaborativeMode = false,
                 collaborativeState = CollaborativeState.IDLE,
                 targetWord = null,
+                ttsHasPronouncedTargetWord = false,  // Reset for new word
                 attemptCount = 0,
                 lastAttemptSuccess = null
             )
@@ -978,6 +993,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         currentTargetWords = targetWords
         _state.value = _state.value.copy(
             targetWord = null,  // Will be set when TTS finishes in onPartialTTSComplete
+            ttsHasPronouncedTargetWord = false,  // Reset for new word
             attemptCount = 0,
             lastAttemptSuccess = null,
             collaborativeState = CollaborativeState.IDLE,
@@ -1283,27 +1299,33 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
             // Record the attempt and update stats
             val currentStreak = current.sessionStats.currentStreak
-            val isFirstTry = newAttemptCount == 1
+            val ttsPronouncedWord = current.ttsHasPronouncedTargetWord
 
             viewModelScope.launch(Dispatchers.IO) {
                 val pageId = current.currentPage?.id ?: 0L
-                val starsEarned = statsRepository.recordCollaborativeAttempt(
+                val attemptResult = statsRepository.recordCollaborativeAttempt(
                     bookId = bookId,
                     pageId = pageId,
                     targetWord = targetWord,
                     spokenWord = results.firstOrNull(),
                     isCorrect = true,
                     attemptNumber = newAttemptCount,
-                    currentStreak = currentStreak
+                    currentStreak = currentStreak,
+                    ttsPronouncedWord = ttsPronouncedWord
                 )
 
-                // Update session stats on main thread
+                // Update session stats on main thread with star type breakdown
                 withContext(Dispatchers.Main) {
-                    val newStreak = currentStreak + 1
+                    val newStreak = attemptResult.newStreak
+                    val isFirstTry = newAttemptCount == 1 && !ttsPronouncedWord
                     val sessionStats = current.sessionStats.copy(
                         currentStreak = newStreak,
                         sessionPerfectWords = if (isFirstTry) current.sessionStats.sessionPerfectWords + 1 else current.sessionStats.sessionPerfectWords,
-                        sessionStars = current.sessionStats.sessionStars + starsEarned
+                        sessionGoldStars = current.sessionStats.sessionGoldStars + if (attemptResult.starType == StarType.GOLD) 1 else 0,
+                        sessionSilverStars = current.sessionStats.sessionSilverStars + if (attemptResult.starType == StarType.SILVER) 1 else 0,
+                        sessionBronzeStars = current.sessionStats.sessionBronzeStars + if (attemptResult.starType == StarType.BRONZE) 1 else 0,
+                        sessionPoints = current.sessionStats.sessionPoints + attemptResult.totalPoints,
+                        sessionStars = current.sessionStats.sessionStars + 1  // Legacy: count all stars
                     )
                     _state.value = _state.value.copy(sessionStats = sessionStats)
                 }
@@ -1324,7 +1346,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     collaborativeState = CollaborativeState.IDLE,
                     attemptCount = 0,
                     lastAttemptSuccess = null,
-                    targetWord = null
+                    targetWord = null,
+                    ttsHasPronouncedTargetWord = false  // Reset for next word
                 )
                 nextSentence()
                 Log.d("SpeechRecognition", "After nextSentence: isPlaying=${_state.value.isPlaying}, needsMorePages=${_state.value.needsMorePages}")
@@ -1399,8 +1422,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         // Set flag to show yellow highlight on target word
         // Also reset lastAttemptSuccess so when listening starts, highlight is green (not red from last failure)
+        // Mark that TTS has pronounced this word - affects star color (will be bronze, not gold/silver)
         _state.value = _state.value.copy(
             isSpeakingTargetWord = true,
+            ttsHasPronouncedTargetWord = true,  // This word was TTS-spoken, so it's a bronze star
             highlightRange = null,  // Clear any stale highlight range
             lastAttemptSuccess = null  // Reset so highlight will be green when listening starts
         )
@@ -1449,7 +1474,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         _state.value = _state.value.copy(
             collaborativeMode = false,
             collaborativeState = CollaborativeState.IDLE,
-            targetWord = null
+            targetWord = null,
+            ttsHasPronouncedTargetWord = false  // Reset
         )
     }
 
@@ -1472,8 +1498,75 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         soundPool?.play(errorSoundId, 1f, 1f, 1, 0, 1f)
     }
 
+    // ==================== READING SESSION TRACKING ====================
+
+    /**
+     * Start a new reading session. Called when the reader fragment resumes.
+     */
+    fun startReadingSession() {
+        if (currentSessionId != null) return // Already have an active session
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val sessionId = statsRepository.startReadingSession(bookId.takeIf { it > 0 })
+            currentSessionId = sessionId
+            sessionPagesRead = 0
+            sessionSentencesRead = 0
+            Log.d(TAG, "Started reading session: $sessionId for book $bookId")
+        }
+    }
+
+    /**
+     * End the current reading session. Called when the reader fragment pauses.
+     */
+    fun endReadingSession() {
+        val sessionId = currentSessionId ?: return
+        currentSessionId = null
+
+        val stats = _state.value.sessionStats
+        viewModelScope.launch(Dispatchers.IO) {
+            statsRepository.endReadingSession(
+                sessionId = sessionId,
+                goldStars = stats.sessionGoldStars,
+                silverStars = stats.sessionSilverStars,
+                bronzeStars = stats.sessionBronzeStars,
+                pointsEarned = stats.sessionPoints,
+                pagesRead = sessionPagesRead,
+                sentencesRead = sessionSentencesRead
+            )
+            Log.d(TAG, "Ended reading session: $sessionId with ${stats.sessionPoints} points")
+        }
+    }
+
+    /**
+     * Track that a sentence was read in the current session.
+     */
+    private fun trackSentenceRead() {
+        sessionSentencesRead++
+        viewModelScope.launch(Dispatchers.IO) {
+            statsRepository.recordSentenceRead()
+            if (bookId > 0) {
+                statsRepository.recordBookSentenceRead(bookId)
+            }
+        }
+    }
+
+    /**
+     * Track that a page was completed in the current session.
+     */
+    private fun trackPageCompleted() {
+        sessionPagesRead++
+        viewModelScope.launch(Dispatchers.IO) {
+            statsRepository.recordPageCompleted()
+            if (bookId > 0) {
+                statsRepository.recordBookPageRead(bookId)
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        // End any active session when ViewModel is destroyed
+        endReadingSession()
         ttsService.stop()
         speechRecognizer?.destroy()
         speechRecognizer = null

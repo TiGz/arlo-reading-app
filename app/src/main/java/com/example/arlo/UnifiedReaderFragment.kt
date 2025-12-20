@@ -134,6 +134,12 @@ class UnifiedReaderFragment : Fragment() {
             showSettingsMenu()
         }
 
+        // Long-press settings button opens parent settings dialog
+        binding.btnSettings.setOnLongClickListener {
+            showParentSettings()
+            true
+        }
+
         // Score container also opens stats
         binding.scoreContainer.setOnClickListener {
             showStatsDashboard()
@@ -213,18 +219,32 @@ class UnifiedReaderFragment : Fragment() {
             binding.tvChapterTitle.visibility = View.GONE
         }
 
-        // Gamification UI - Stars and Streak
-        val totalStars = state.totalStars + state.sessionStats.sessionStars
+        // Gamification UI - Multi-star display
+        val sessionStats = state.sessionStats
+        binding.tvGoldStarCount.text = sessionStats.sessionGoldStars.toString()
+        binding.tvSilverStarCount.text = sessionStats.sessionSilverStars.toString()
+        binding.tvBronzeStarCount.text = sessionStats.sessionBronzeStars.toString()
+
+        // Legacy total star count (hidden but kept for compatibility)
+        val totalStars = state.totalStars + sessionStats.sessionStars
         binding.tvStarCount.text = totalStars.toString()
 
         // Animate star burst when stars increase
-        if (totalStars > lastStarCount && lastStarCount > 0) {
+        if (sessionStats.totalSessionStars > lastStarCount && lastStarCount > 0) {
             val starBurst = AnimationUtils.loadAnimation(requireContext(), R.anim.star_burst)
             binding.scoreContainer.startAnimation(starBurst)
         }
-        lastStarCount = totalStars
+        lastStarCount = sessionStats.totalSessionStars
 
-        val currentStreak = state.sessionStats.currentStreak
+        // Daily progress bar
+        val dailyPoints = sessionStats.sessionPoints
+        val dailyTarget = 100  // TODO: Load from ParentSettings
+        binding.dailyProgressBar.max = dailyTarget
+        binding.dailyProgressBar.progress = dailyPoints.coerceAtMost(dailyTarget)
+        binding.tvDailyProgress.text = "$dailyPoints/$dailyTarget pts"
+
+        // Streak fire indicator
+        val currentStreak = sessionStats.currentStreak
         if (currentStreak >= 3) {
             binding.ivStreakFire.visibility = View.VISIBLE
             binding.tvStreakCount.visibility = View.VISIBLE
@@ -480,6 +500,9 @@ class UnifiedReaderFragment : Fragment() {
         super.onResume()
         viewModel.refreshPages()
 
+        // Start reading session for time tracking
+        viewModel.startReadingSession()
+
         // Check if microphone permission was lost while app was in background
         // This can happen if user revokes permission in settings
         checkMicrophonePermission()
@@ -583,6 +606,8 @@ class UnifiedReaderFragment : Fragment() {
         super.onPause()
         viewModel.stopReading()
         viewModel.cancelSpeechRecognition()
+        // End reading session for time tracking
+        viewModel.endReadingSession()
     }
 
     override fun onDestroyView() {
@@ -833,8 +858,17 @@ class UnifiedReaderFragment : Fragment() {
     }
 
     /**
-     * Handle secret tap on book title to toggle kid mode.
-     * Requires 5 taps within 2 seconds to toggle.
+     * Show parent settings dialog (long-press settings button or 5-tap gesture).
+     */
+    private fun showParentSettings() {
+        viewModel.stopReading()
+        ParentSettingsDialogFragment.newInstance()
+            .show(parentFragmentManager, ParentSettingsDialogFragment.TAG)
+    }
+
+    /**
+     * Handle secret tap on book title to open parent settings.
+     * Requires 5 taps within 2 seconds to open.
      */
     private fun handleSecretTap() {
         val now = System.currentTimeMillis()
@@ -849,16 +883,9 @@ class UnifiedReaderFragment : Fragment() {
 
         if (secretTapCount >= SECRET_TAP_COUNT_REQUIRED) {
             secretTapCount = 0
-            val wasKidMode = viewModel.state.value.kidMode
-            viewModel.toggleKidMode()
-
-            // Show toast feedback for parent
-            val message = if (wasKidMode) {
-                "Parent mode unlocked"
-            } else {
-                "Kid mode enabled"
-            }
-            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            // Open parent settings dialog
+            showParentSettings()
+            Toast.makeText(requireContext(), "Parent settings", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -6,11 +6,13 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
 import com.example.arlo.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -19,6 +21,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var apiKeyManager: ApiKeyManager
     private val handler = Handler(Looper.getMainLooper())
 
+    // Track current navigation state
+    private var currentNavItemId = R.id.nav_library
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -26,8 +31,43 @@ class MainActivity : AppCompatActivity() {
 
         apiKeyManager = ApiKeyManager(this)
 
+        // Setup bottom navigation
+        setupBottomNavigation()
+
         // Check for API key first, then proceed
         checkApiKeyAndProceed(savedInstanceState)
+    }
+
+    private fun setupBottomNavigation() {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_library -> {
+                    if (currentNavItemId != R.id.nav_library) {
+                        navigateToFragment(LibraryFragment(), "library")
+                        currentNavItemId = R.id.nav_library
+                    }
+                    true
+                }
+                R.id.nav_stats -> {
+                    if (currentNavItemId != R.id.nav_stats) {
+                        navigateToFragment(StatsDashboardFragment(), "stats")
+                        currentNavItemId = R.id.nav_stats
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun navigateToFragment(fragment: Fragment, tag: String) {
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(
+                android.R.anim.fade_in,
+                android.R.anim.fade_out
+            )
+            .replace(R.id.container, fragment, tag)
+            .commit()
     }
 
     private fun checkApiKeyAndProceed(savedInstanceState: Bundle?) {
@@ -44,9 +84,25 @@ class MainActivity : AppCompatActivity() {
     private fun initializeApp(savedInstanceState: Bundle?) {
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
-                .replace(R.id.container, LibraryFragment())
+                .replace(R.id.container, LibraryFragment(), "library")
                 .commit()
+            currentNavItemId = R.id.nav_library
         }
+    }
+
+    /**
+     * Show/hide bottom navigation bar.
+     * Call this from fragments that need full-screen mode (e.g., reader).
+     */
+    fun setBottomNavVisible(visible: Boolean) {
+        binding.bottomNavigation.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Navigate to stats dashboard tab programmatically.
+     */
+    fun navigateToStats() {
+        binding.bottomNavigation.selectedItemId = R.id.nav_stats
     }
 
     private fun showApiKeyDialog(onSuccess: () -> Unit) {

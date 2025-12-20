@@ -47,6 +47,8 @@
     <color name="divider">#E0E0E0</color>
     <color name="card_shadow">#1A000000</color>
     <color name="ripple">#2000BCD4</color>
+    <color name="accent_teal">#00897B</color>
+    <color name="switch_track_color">#80BDBDBD</color>
 
     <!-- Status Colors -->
     <color name="success">#4CAF50</color>
@@ -56,6 +58,22 @@
     <color name="warning">#FF9800</color>
     <color name="warning_background">#FFF3E0</color>
     <color name="warning_text">#E65100</color>
+
+    <!-- Star Colors (Gamification) -->
+    <color name="star_gold">#FFD700</color>
+    <color name="star_gold_dark">#E6C200</color>
+    <color name="star_gold_light">#FFEB3B</color>
+    <color name="star_silver">#C0C0C0</color>
+    <color name="star_silver_dark">#A8A8A8</color>
+    <color name="star_silver_light">#D9D9D9</color>
+    <color name="star_bronze">#CD7F32</color>
+    <color name="star_bronze_dark">#B5722C</color>
+    <color name="star_bronze_light">#D99A5B</color>
+
+    <!-- Progress Bar Colors -->
+    <color name="progress_track">#E0E0E0</color>
+    <color name="progress_fill">#4CAF50</color>
+    <color name="progress_fill_complete">#00C853</color>
 
     <!-- Info Banners -->
     <color name="info_background">#E3F2FD</color>

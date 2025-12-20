@@ -14,8 +14,15 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
 
     companion object {
         private val DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        private val MONTH_FORMAT = SimpleDateFormat("yyyy-MM", Locale.US)
 
         fun todayString(): String = DATE_FORMAT.format(Date())
+
+        fun getYesterdayString(): String {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_YEAR, -1)
+            return DATE_FORMAT.format(cal.time)
+        }
 
         fun weekStartString(): String {
             val cal = Calendar.getInstance()
@@ -24,10 +31,56 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
             return DATE_FORMAT.format(cal.time)
         }
 
+        fun getLastWeekStartString(): String {
+            val cal = Calendar.getInstance()
+            cal.firstDayOfWeek = Calendar.MONDAY
+            cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            cal.add(Calendar.WEEK_OF_YEAR, -1)
+            return DATE_FORMAT.format(cal.time)
+        }
+
+        fun weekEndString(): String {
+            val cal = Calendar.getInstance()
+            cal.firstDayOfWeek = Calendar.MONDAY
+            cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+            return DATE_FORMAT.format(cal.time)
+        }
+
+        fun getCurrentMonthString(): String = MONTH_FORMAT.format(Date())
+
+        fun getLastMonthString(): String {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.MONTH, -1)
+            return MONTH_FORMAT.format(cal.time)
+        }
+
         private fun dayOfWeekName(): String {
             return Calendar.getInstance().getDisplayName(
                 Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.US
             ) ?: "Mon"
+        }
+
+        /**
+         * Get the week start date for a given offset from current week.
+         * offset = 0 means current week, -1 means last week, etc.
+         */
+        fun getWeekStartForOffset(offset: Int): String {
+            val cal = Calendar.getInstance()
+            cal.firstDayOfWeek = Calendar.MONDAY
+            cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            cal.add(Calendar.WEEK_OF_YEAR, offset)
+            return DATE_FORMAT.format(cal.time)
+        }
+
+        /**
+         * Get the week end date for a given offset from current week.
+         */
+        fun getWeekEndForOffset(offset: Int): String {
+            val cal = Calendar.getInstance()
+            cal.firstDayOfWeek = Calendar.MONDAY
+            cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+            cal.add(Calendar.WEEK_OF_YEAR, offset)
+            return DATE_FORMAT.format(cal.time)
         }
     }
 
@@ -93,8 +146,28 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
     // ==================== COLLABORATIVE ATTEMPTS ====================
 
     /**
-     * Record a collaborative reading attempt.
-     * Returns the number of stars earned (1 for first-try, 0 otherwise).
+     * Result of recording a collaborative attempt with the new star/points system.
+     */
+    data class AttemptResult(
+        val starType: StarType,
+        val basePoints: Int,
+        val streakBonus: Int,
+        val totalPoints: Int,
+        val newStreak: Int
+    )
+
+    /**
+     * Record a collaborative reading attempt with star type tracking.
+     * Returns AttemptResult with star type and points earned.
+     *
+     * @param bookId The book being read
+     * @param pageId The current page
+     * @param targetWord The word the child was supposed to say
+     * @param spokenWord What speech recognition heard
+     * @param isCorrect Whether the answer matched
+     * @param attemptNumber Which attempt this is (1, 2, 3, etc.)
+     * @param currentStreak Current session streak before this attempt
+     * @param ttsPronouncedWord Whether TTS read the word aloud before this attempt
      */
     suspend fun recordCollaborativeAttempt(
         bookId: Long,
@@ -103,11 +176,21 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
         spokenWord: String?,
         isCorrect: Boolean,
         attemptNumber: Int,
-        currentStreak: Int
-    ): Int {
+        currentStreak: Int,
+        ttsPronouncedWord: Boolean = false
+    ): AttemptResult {
         val isFirstTry = attemptNumber == 1 && isCorrect
 
-        // Record the attempt
+        // Determine star type using the new system
+        val starType = StarType.determine(attemptNumber, isCorrect, ttsPronouncedWord)
+        val newStreak = if (isCorrect) currentStreak + 1 else 0
+
+        // Calculate points with streak bonus
+        val basePoints = starType.points
+        val totalPoints = if (isCorrect) StarType.calculatePoints(starType, newStreak) else 0
+        val streakBonus = totalPoints - basePoints
+
+        // Record the attempt with new fields
         dao.insertCollaborativeAttempt(CollaborativeAttempt(
             bookId = bookId,
             pageId = pageId,
@@ -115,34 +198,37 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
             spokenWord = spokenWord,
             isCorrect = isCorrect,
             attemptNumber = attemptNumber,
-            isFirstTrySuccess = isFirstTry
+            isFirstTrySuccess = isFirstTry,
+            starType = if (isCorrect) starType.name else null,
+            pointsEarned = totalPoints,
+            ttsPronouncedWord = ttsPronouncedWord,
+            sessionStreak = newStreak,
+            streakBonus = streakBonus
         ))
 
-        // Update daily stats
+        // Update daily stats with star type breakdown
         val today = getTodayStats()
-        val newPerfectWords = if (isFirstTry) today.perfectWords + 1 else today.perfectWords
-        val newStreak = if (isCorrect) currentStreak + 1 else 0
         val bestStreak = maxOf(today.longestStreak, newStreak)
 
-        // Calculate stars earned
-        var starsEarned = 0
-        if (isFirstTry) {
-            starsEarned = 1  // Base star for first-try success
-
-            // Streak bonuses
-            when {
-                newStreak >= 10 -> starsEarned += 3  // 10+ streak bonus
-                newStreak >= 5 -> starsEarned += 2   // 5+ streak bonus
-                newStreak >= 3 -> starsEarned += 1   // 3+ streak bonus
-            }
-        }
+        // Get parent settings for daily target
+        val parentSettings = dao.getParentSettings() ?: ParentSettings()
+        val newTotalPoints = today.totalPoints + totalPoints
+        val goalMet = newTotalPoints >= parentSettings.dailyPointsTarget
 
         dao.upsertDailyStats(today.copy(
-            perfectWords = newPerfectWords,
+            perfectWords = if (isFirstTry) today.perfectWords + 1 else today.perfectWords,
             totalCollaborativeAttempts = today.totalCollaborativeAttempts + 1,
             successfulCollaborativeAttempts = if (isCorrect) today.successfulCollaborativeAttempts + 1 else today.successfulCollaborativeAttempts,
             longestStreak = bestStreak,
-            starsEarned = today.starsEarned + starsEarned,
+            // Legacy field for backwards compatibility
+            starsEarned = today.starsEarned + (if (starType != StarType.NONE) 1 else 0),
+            // New star type breakdown
+            goldStars = today.goldStars + (if (starType == StarType.GOLD) 1 else 0),
+            silverStars = today.silverStars + (if (starType == StarType.SILVER) 1 else 0),
+            bronzeStars = today.bronzeStars + (if (starType == StarType.BRONZE) 1 else 0),
+            totalPoints = newTotalPoints,
+            dailyPointsTarget = parentSettings.dailyPointsTarget,
+            goalMet = goalMet,
             updatedAt = System.currentTimeMillis()
         ))
 
@@ -150,9 +236,40 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
         updateDifficultWord(targetWord, spokenWord, isCorrect, bookId)
 
         // Update book stats
-        updateBookStatsForAttempt(bookId, isFirstTry, isCorrect, newStreak)
+        updateBookStatsForAttempt(bookId, starType, isCorrect, newStreak, totalPoints)
 
-        return starsEarned
+        // Update streak states
+        if (isCorrect) {
+            updateStreakStates(newStreak)
+        }
+
+        return AttemptResult(
+            starType = starType,
+            basePoints = basePoints,
+            streakBonus = streakBonus,
+            totalPoints = totalPoints,
+            newStreak = newStreak
+        )
+    }
+
+    /**
+     * Legacy method for backwards compatibility.
+     * Calls the new method with ttsPronouncedWord = false.
+     */
+    @Deprecated("Use recordCollaborativeAttempt with ttsPronouncedWord parameter")
+    suspend fun recordCollaborativeAttemptLegacy(
+        bookId: Long,
+        pageId: Long,
+        targetWord: String,
+        spokenWord: String?,
+        isCorrect: Boolean,
+        attemptNumber: Int,
+        currentStreak: Int
+    ): Int {
+        val result = recordCollaborativeAttempt(
+            bookId, pageId, targetWord, spokenWord, isCorrect, attemptNumber, currentStreak, false
+        )
+        return result.totalPoints
     }
 
     // ==================== DIFFICULT WORDS ====================
@@ -288,29 +405,336 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
      */
     private suspend fun updateBookStatsForAttempt(
         bookId: Long,
-        isFirstTry: Boolean,
+        starType: StarType,
         isCorrect: Boolean,
-        currentStreak: Int
+        currentStreak: Int,
+        pointsEarned: Int
     ) {
         val stats = getOrCreateBookStats(bookId)
-
-        var starsEarned = 0
-        if (isFirstTry) {
-            starsEarned = 1
-            when {
-                currentStreak >= 10 -> starsEarned += 3
-                currentStreak >= 5 -> starsEarned += 2
-                currentStreak >= 3 -> starsEarned += 1
-            }
-        }
+        val isFirstTry = starType == StarType.GOLD
 
         dao.upsertBookStats(stats.copy(
             totalCollaborativeWords = stats.totalCollaborativeWords + 1,
             perfectWordsCount = if (isFirstTry) stats.perfectWordsCount + 1 else stats.perfectWordsCount,
             longestStreak = maxOf(stats.longestStreak, currentStreak),
-            totalStarsEarned = stats.totalStarsEarned + starsEarned
+            totalStarsEarned = stats.totalStarsEarned + (if (starType != StarType.NONE) 1 else 0)
         ))
     }
+
+    // ==================== STREAK MANAGEMENT ====================
+
+    /**
+     * Update streak states at all levels after a correct answer.
+     */
+    private suspend fun updateStreakStates(newSessionStreak: Int) {
+        val today = todayString()
+        val now = System.currentTimeMillis()
+
+        // Update session streak (best of session)
+        val sessionState = dao.getStreakState(StreakState.TYPE_SESSION)
+            ?: StreakState(StreakState.TYPE_SESSION)
+        if (newSessionStreak > sessionState.currentStreak) {
+            dao.upsertStreakState(sessionState.copy(
+                currentStreak = newSessionStreak,
+                bestStreak = maxOf(sessionState.bestStreak, newSessionStreak),
+                lastActivityDate = today,
+                lastActivityTimestamp = now
+            ))
+        }
+
+        // Update all-time best streak
+        val allTimeState = dao.getStreakState(StreakState.TYPE_ALL_TIME)
+            ?: StreakState(StreakState.TYPE_ALL_TIME)
+        if (newSessionStreak > allTimeState.bestStreak) {
+            dao.upsertStreakState(allTimeState.copy(
+                bestStreak = newSessionStreak,
+                lastActivityDate = today,
+                lastActivityTimestamp = now
+            ))
+        }
+
+        // Update day streak (consecutive days with activity)
+        updateDayStreak(today)
+
+        // Update week streak (consecutive weeks with activity)
+        updateWeekStreak()
+
+        // Update month streak (consecutive months with activity)
+        updateMonthStreak()
+    }
+
+    /**
+     * Update day-level streak (consecutive days with reading activity).
+     */
+    private suspend fun updateDayStreak(today: String) {
+        val dayState = dao.getStreakState(StreakState.TYPE_DAY)
+            ?: StreakState(StreakState.TYPE_DAY)
+
+        if (dayState.lastActivityDate == today) {
+            return  // Already counted today
+        }
+
+        val yesterday = getYesterdayString()
+        val newDayStreak = if (dayState.lastActivityDate == yesterday) {
+            dayState.currentStreak + 1  // Continuing streak
+        } else if (dayState.lastActivityDate.isEmpty()) {
+            1  // First day
+        } else {
+            1  // Streak broken, start fresh
+        }
+
+        dao.upsertStreakState(dayState.copy(
+            currentStreak = newDayStreak,
+            bestStreak = maxOf(dayState.bestStreak, newDayStreak),
+            lastActivityDate = today,
+            lastActivityTimestamp = System.currentTimeMillis()
+        ))
+    }
+
+    /**
+     * Update week-level streak (consecutive weeks with reading activity).
+     */
+    private suspend fun updateWeekStreak() {
+        val weekStart = weekStartString()
+        val weekState = dao.getStreakState(StreakState.TYPE_WEEK)
+            ?: StreakState(StreakState.TYPE_WEEK)
+
+        if (weekState.lastActivityWeek == weekStart) {
+            return  // Already counted this week
+        }
+
+        val lastWeekStart = getLastWeekStartString()
+        val newWeekStreak = if (weekState.lastActivityWeek == lastWeekStart) {
+            weekState.currentStreak + 1  // Continuing streak
+        } else if (weekState.lastActivityWeek.isEmpty()) {
+            1  // First week
+        } else {
+            1  // Streak broken
+        }
+
+        dao.upsertStreakState(weekState.copy(
+            currentStreak = newWeekStreak,
+            bestStreak = maxOf(weekState.bestStreak, newWeekStreak),
+            lastActivityWeek = weekStart,
+            lastActivityTimestamp = System.currentTimeMillis()
+        ))
+    }
+
+    /**
+     * Update month-level streak (consecutive months with reading activity).
+     */
+    private suspend fun updateMonthStreak() {
+        val currentMonth = getCurrentMonthString()
+        val monthState = dao.getStreakState(StreakState.TYPE_MONTH)
+            ?: StreakState(StreakState.TYPE_MONTH)
+
+        if (monthState.lastActivityMonth == currentMonth) {
+            return  // Already counted this month
+        }
+
+        val lastMonth = getLastMonthString()
+        val newMonthStreak = if (monthState.lastActivityMonth == lastMonth) {
+            monthState.currentStreak + 1
+        } else if (monthState.lastActivityMonth.isEmpty()) {
+            1
+        } else {
+            1
+        }
+
+        dao.upsertStreakState(monthState.copy(
+            currentStreak = newMonthStreak,
+            bestStreak = maxOf(monthState.bestStreak, newMonthStreak),
+            lastActivityMonth = currentMonth,
+            lastActivityTimestamp = System.currentTimeMillis()
+        ))
+    }
+
+    /**
+     * Reset session streak (called when an incorrect answer is given or session ends).
+     */
+    suspend fun resetSessionStreak() {
+        val sessionState = dao.getStreakState(StreakState.TYPE_SESSION)
+            ?: return
+        dao.upsertStreakState(sessionState.copy(currentStreak = 0))
+    }
+
+    /**
+     * Get all streak states for display.
+     */
+    suspend fun getAllStreakStates(): List<StreakState> = dao.getAllStreakStates()
+
+    /**
+     * Observe all streak states for real-time display.
+     */
+    fun observeAllStreakStates(): Flow<List<StreakState>> = dao.observeAllStreakStates()
+
+    /**
+     * Get the best streak ever recorded (all-time).
+     */
+    suspend fun getBestStreakAllTime(): Int {
+        return dao.getStreakState(StreakState.TYPE_ALL_TIME)?.bestStreak ?: 0
+    }
+
+    // ==================== PARENT SETTINGS ====================
+
+    /**
+     * Get parent settings (or defaults if not set).
+     */
+    suspend fun getParentSettings(): ParentSettings {
+        return dao.getParentSettings() ?: ParentSettings().also {
+            dao.upsertParentSettings(it)
+        }
+    }
+
+    /**
+     * Observe parent settings for real-time updates.
+     */
+    fun observeParentSettings(): Flow<ParentSettings?> = dao.observeParentSettings()
+
+    /**
+     * Update the daily points target.
+     */
+    suspend fun updateDailyPointsTarget(target: Int) {
+        dao.updateDailyPointsTarget(target)
+    }
+
+    /**
+     * Update all parent settings.
+     */
+    suspend fun updateParentSettings(settings: ParentSettings) {
+        dao.upsertParentSettings(settings.copy(lastModified = System.currentTimeMillis()))
+    }
+
+    // ==================== READING SESSIONS (Time Tracking) ====================
+
+    /**
+     * Start a new reading session.
+     * Returns the session ID.
+     */
+    suspend fun startReadingSession(bookId: Long? = null): Long {
+        val today = todayString()
+        val session = ReadingSession(
+            date = today,
+            startTimestamp = System.currentTimeMillis(),
+            bookId = bookId,
+            isActive = true
+        )
+        return dao.insertReadingSession(session)
+    }
+
+    /**
+     * End an active reading session.
+     */
+    suspend fun endReadingSession(
+        sessionId: Long,
+        goldStars: Int = 0,
+        silverStars: Int = 0,
+        bronzeStars: Int = 0,
+        pointsEarned: Int = 0,
+        pagesRead: Int = 0,
+        sentencesRead: Int = 0
+    ) {
+        val session = dao.getReadingSession(sessionId) ?: return
+        val endTime = System.currentTimeMillis()
+        val duration = endTime - session.startTimestamp
+
+        dao.endReadingSession(
+            sessionId = sessionId,
+            endTimestamp = endTime,
+            durationMs = duration,
+            goldStars = goldStars,
+            silverStars = silverStars,
+            bronzeStars = bronzeStars,
+            pointsEarned = pointsEarned,
+            pagesRead = pagesRead,
+            sentencesRead = sentencesRead
+        )
+
+        // Update daily active reading time
+        val today = getTodayStats()
+        dao.upsertDailyStats(today.copy(
+            activeReadingTimeMs = today.activeReadingTimeMs + duration,
+            sessionCount = today.sessionCount + 1,
+            updatedAt = System.currentTimeMillis()
+        ))
+    }
+
+    /**
+     * Get the currently active session (if any).
+     */
+    suspend fun getActiveSession(): ReadingSession? = dao.getActiveSession()
+
+    /**
+     * Get total reading time for today.
+     */
+    suspend fun getTodayReadingTimeMs(): Long = dao.getTotalReadingTimeForDate(todayString()) ?: 0L
+
+    /**
+     * Get total reading time across all days.
+     */
+    suspend fun getTotalReadingTimeMs(): Long = dao.getTotalReadingTimeAllTime() ?: 0L
+
+    /**
+     * Get total session count from today's stats.
+     */
+    suspend fun getTodaySessionCount(): Int = getTodayStats().sessionCount
+
+    // ==================== DAILY RECORDS FOR DASHBOARD ====================
+
+    /**
+     * Get daily stats for a week range (for dashboard display).
+     */
+    suspend fun getDailyStatsForWeek(weekStartDate: String, weekEndDate: String): List<DailyStats> {
+        return dao.getDailyStatsRange(weekStartDate, weekEndDate)
+    }
+
+    /**
+     * Get weekly summary statistics.
+     */
+    suspend fun getWeeklySummary(startDate: String, endDate: String): WeeklySummaryResult {
+        return dao.getWeeklySummary(startDate, endDate) ?: WeeklySummaryResult(
+            totalPoints = 0,
+            totalActiveTimeMs = 0,
+            daysWithActivity = 0,
+            goldStars = 0,
+            silverStars = 0,
+            bronzeStars = 0
+        )
+    }
+
+    /**
+     * Get today's star breakdown for display.
+     */
+    suspend fun getTodayStarBreakdown(): StarBreakdownResult {
+        return dao.getDayStarBreakdown(todayString()) ?: StarBreakdownResult(
+            goldStars = 0,
+            silverStars = 0,
+            bronzeStars = 0,
+            totalPoints = 0
+        )
+    }
+
+    /**
+     * Get lifetime star breakdown (all time totals).
+     */
+    suspend fun getLifetimeStarBreakdown(): StarBreakdownResult {
+        return dao.getLifetimeStarBreakdown() ?: StarBreakdownResult(
+            goldStars = 0,
+            silverStars = 0,
+            bronzeStars = 0,
+            totalPoints = 0
+        )
+    }
+
+    /**
+     * Observe total points across all time.
+     */
+    fun observeTotalPoints(): Flow<Int?> = dao.observeTotalPoints()
+
+    /**
+     * Get total points synchronously.
+     */
+    suspend fun getTotalPoints(): Int = dao.getTotalPoints() ?: 0
 
     /**
      * Record that a sentence was read in a book.

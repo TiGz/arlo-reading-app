@@ -68,11 +68,39 @@ class StatsDashboardFragment : Fragment() {
                 statsRepository.getLifetimeStats()
             }
 
+            // Load star breakdown
+            val starBreakdown = withContext(Dispatchers.IO) {
+                statsRepository.getLifetimeStarBreakdown()
+            }
+
+            // Display star breakdown
+            binding.tvTotalPoints.text = starBreakdown.totalPoints.toString()
+            binding.tvGoldStars.text = starBreakdown.goldStars.toString()
+            binding.tvSilverStars.text = starBreakdown.silverStars.toString()
+            binding.tvBronzeStars.text = starBreakdown.bronzeStars.toString()
+
+            // Legacy total stars (hidden but kept for compatibility)
             binding.tvTotalStars.text = (lifetimeStats.totalStars ?: 0).toString()
             binding.tvPerfectWords.text = (lifetimeStats.totalPerfect ?: 0).toString()
             binding.tvBestStreak.text = (lifetimeStats.bestStreak ?: 0).toString()
             binding.tvSentencesRead.text = (lifetimeStats.totalSentences ?: 0).toString()
             binding.tvPagesCompleted.text = (lifetimeStats.totalPages ?: 0).toString()
+
+            // Load reading time stats
+            val totalTimeMs = withContext(Dispatchers.IO) {
+                statsRepository.getTotalReadingTimeMs()
+            }
+            val todayTimeMs = withContext(Dispatchers.IO) {
+                statsRepository.getTodayReadingTimeMs()
+            }
+            val sessionCount = withContext(Dispatchers.IO) {
+                statsRepository.getTodaySessionCount()
+            }
+
+            // Format and display reading time
+            binding.tvReadingTime.text = formatDuration(totalTimeMs)
+            binding.tvTodayTime.text = "Today: ${formatDuration(todayTimeMs)}"
+            binding.tvSessionCount.text = "$sessionCount sessions today"
 
             // Load difficult words
             val difficultWords = withContext(Dispatchers.IO) {
@@ -175,6 +203,21 @@ class StatsDashboardFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    /**
+     * Format milliseconds into a human-readable duration string.
+     */
+    private fun formatDuration(ms: Long): String {
+        val totalMinutes = ms / 60000
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+
+        return when {
+            hours > 0 -> "${hours}h ${minutes}m"
+            minutes > 0 -> "${minutes} min"
+            else -> "< 1 min"
+        }
     }
 
     companion object {

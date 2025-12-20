@@ -6,6 +6,57 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
+ * Star types for the gamification system.
+ * Gold = 1st try, Silver = 2nd/3rd try before TTS, Bronze = after TTS reads word
+ */
+enum class StarType(val points: Int, val displayName: String) {
+    GOLD(5, "Gold"),
+    SILVER(3, "Silver"),
+    BRONZE(1, "Bronze"),
+    NONE(0, "None");
+
+    companion object {
+        /**
+         * Determines star type based on attempt context.
+         * @param attemptNumber Which attempt (1, 2, 3, etc.)
+         * @param isCorrect Whether the answer was correct
+         * @param ttsPronouncedWord Whether TTS read the word before this attempt
+         */
+        fun determine(attemptNumber: Int, isCorrect: Boolean, ttsPronouncedWord: Boolean): StarType {
+            if (!isCorrect) return NONE
+            return when {
+                !ttsPronouncedWord && attemptNumber == 1 -> GOLD
+                !ttsPronouncedWord && attemptNumber in 2..3 -> SILVER
+                ttsPronouncedWord -> BRONZE
+                else -> NONE
+            }
+        }
+
+        /**
+         * Calculate streak bonus multiplier.
+         * 3+ streak = +25%, 5+ streak = +50%, 10+ streak = +100%
+         */
+        fun getStreakMultiplier(sessionStreak: Int): Float {
+            return when {
+                sessionStreak >= 10 -> 2.0f    // +100%
+                sessionStreak >= 5 -> 1.5f     // +50%
+                sessionStreak >= 3 -> 1.25f    // +25%
+                else -> 1.0f                    // No bonus
+            }
+        }
+
+        /**
+         * Calculate total points with streak bonus.
+         */
+        fun calculatePoints(starType: StarType, sessionStreak: Int): Int {
+            val basePoints = starType.points
+            val multiplier = getStreakMultiplier(sessionStreak)
+            return (basePoints * multiplier).toInt()
+        }
+    }
+}
+
+/**
  * Tracks daily reading statistics for gamification.
  * Each day gets one row per user session summary.
  */
@@ -15,14 +66,37 @@ data class DailyStats(
     val sentencesRead: Int = 0,
     val pagesCompleted: Int = 0,
     val booksCompleted: Int = 0,
+
+    // Legacy field - kept for migration compatibility
     val starsEarned: Int = 0,
+
+    // New star type breakdown
+    val goldStars: Int = 0,              // Correct on 1st try
+    val silverStars: Int = 0,            // Correct on 2nd/3rd try before TTS
+    val bronzeStars: Int = 0,            // Correct after TTS reads word
+    val totalPoints: Int = 0,            // All points including streak bonuses
+
+    // Daily goal tracking
+    val dailyPointsTarget: Int = 100,    // Configurable by parent
+    val goalMet: Boolean = false,        // True when totalPoints >= dailyPointsTarget
+
     val perfectWords: Int = 0,           // First-try correct in collaborative mode
     val totalCollaborativeAttempts: Int = 0,
     val successfulCollaborativeAttempts: Int = 0,
     val longestStreak: Int = 0,          // Best consecutive perfect words that day
-    val totalReadingTimeMs: Long = 0,
+
+    // Time tracking
+    val totalReadingTimeMs: Long = 0,    // Legacy - total time
+    val activeReadingTimeMs: Long = 0,   // Time actually reading (book open)
+    val totalAppTimeMs: Long = 0,        // Total app open time
+    val sessionCount: Int = 0,           // Number of reading sessions
+
     val updatedAt: Long = System.currentTimeMillis()
-)
+) {
+    /** Total stars of all types */
+    val totalStars: Int
+        get() = goldStars + silverStars + bronzeStars
+}
 
 /**
  * Tracks words that the child struggles with in collaborative mode.
@@ -78,7 +152,14 @@ data class CollaborativeAttempt(
     val isCorrect: Boolean,
     val attemptNumber: Int,              // 1, 2, or 3 for retry tracking
     val isFirstTrySuccess: Boolean,      // Special flag for streak bonus
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+
+    // New fields for star/points tracking
+    val starType: String? = null,        // "GOLD", "SILVER", "BRONZE", or null
+    val pointsEarned: Int = 0,           // Points including streak bonus
+    val ttsPronouncedWord: Boolean = false,  // True if TTS read word before success
+    val sessionStreak: Int = 0,          // Streak count when attempt was made
+    val streakBonus: Int = 0             // Bonus points from streak multiplier
 )
 
 /**
@@ -150,8 +231,128 @@ data class BookStats(
  * Reset at end of each reading session.
  */
 data class SessionStats(
-    val currentStreak: Int = 0,          // Consecutive perfect words this session
-    val sessionPerfectWords: Int = 0,
-    val sessionStars: Int = 0,
+    val currentStreak: Int = 0,          // Consecutive correct words this session
+    val sessionPerfectWords: Int = 0,    // First-try successes (gold stars)
+    val sessionGoldStars: Int = 0,
+    val sessionSilverStars: Int = 0,
+    val sessionBronzeStars: Int = 0,
+    val sessionPoints: Int = 0,          // Total points this session
+    val sessionStars: Int = 0,           // Legacy - total stars
     val sessionStartTime: Long = System.currentTimeMillis()
+) {
+    val totalSessionStars: Int
+        get() = sessionGoldStars + sessionSilverStars + sessionBronzeStars
+}
+
+// ==================== NEW ENTITIES FOR GAMIFICATION V2 ====================
+
+/**
+ * Tracks streak state at different levels (session, day, week, month, all-time).
+ * One row per streak type.
+ */
+@Entity(tableName = "streak_state")
+data class StreakState(
+    @PrimaryKey val streakType: String,  // "session", "day", "week", "month", "allTime"
+    val currentStreak: Int = 0,
+    val bestStreak: Int = 0,
+    val lastActivityDate: String = "",   // ISO date of last activity
+    val lastActivityWeek: String = "",   // ISO week (for week streaks)
+    val lastActivityMonth: String = "",  // YYYY-MM (for month streaks)
+    val lastActivityTimestamp: Long = 0
+) {
+    companion object {
+        const val TYPE_SESSION = "session"
+        const val TYPE_DAY = "day"
+        const val TYPE_WEEK = "week"
+        const val TYPE_MONTH = "month"
+        const val TYPE_ALL_TIME = "allTime"
+
+        fun allTypes() = listOf(TYPE_SESSION, TYPE_DAY, TYPE_WEEK, TYPE_MONTH, TYPE_ALL_TIME)
+    }
+}
+
+/**
+ * Parent-configurable settings for the gamification system.
+ * Singleton pattern - only one row with id=1.
+ */
+@Entity(tableName = "parent_settings")
+data class ParentSettings(
+    @PrimaryKey val id: Int = 1,         // Singleton - always 1
+    val dailyPointsTarget: Int = 100,    // Daily goal (default 100 points)
+    val weeklyDaysTarget: Int = 5,       // Weekly goal (5 of 7 days)
+    val enableStreakBonuses: Boolean = true,
+    val maxStreakMultiplier: Float = 2.0f,  // Cap at 2x
+    val kidModeEnabled: Boolean = true,
+    val pinCode: String? = null,         // Future: PIN lock for parent settings
+    val lastModified: Long = System.currentTimeMillis()
 )
+
+/**
+ * Tracks individual reading sessions for time tracking.
+ * Created when reader opens, closed when reader closes.
+ */
+@Entity(
+    tableName = "reading_sessions",
+    indices = [Index(value = ["date"]), Index(value = ["bookId"])]
+)
+data class ReadingSession(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: String,                    // ISO date
+    val startTimestamp: Long,
+    val endTimestamp: Long? = null,      // null if session in progress
+    val durationMs: Long = 0,
+    val bookId: Long? = null,
+    val pagesRead: Int = 0,
+    val sentencesRead: Int = 0,
+    val goldStars: Int = 0,
+    val silverStars: Int = 0,
+    val bronzeStars: Int = 0,
+    val pointsEarned: Int = 0,
+    val isActive: Boolean = true         // false when session ends
+) {
+    val totalStars: Int
+        get() = goldStars + silverStars + bronzeStars
+}
+
+/**
+ * Summary data for displaying a day in the reading history.
+ * Not a Room entity - computed from DailyStats.
+ */
+data class DailyRecordDisplay(
+    val date: String,                    // "2025-12-20"
+    val dayOfWeek: String,               // "FRI"
+    val dayNumber: Int,                  // 20
+    val month: String,                   // "DEC"
+    val goldStars: Int,
+    val silverStars: Int,
+    val bronzeStars: Int,
+    val totalPoints: Int,
+    val readingTimeMinutes: Int,
+    val goalMet: Boolean,
+    val dailyPointsTarget: Int
+) {
+    val totalStars: Int
+        get() = goldStars + silverStars + bronzeStars
+}
+
+/**
+ * Weekly summary for dashboard display.
+ * Not a Room entity - computed from DailyStats.
+ */
+data class WeeklySummaryDisplay(
+    val weekStartDate: String,
+    val weekEndDate: String,
+    val totalPoints: Int,
+    val totalTimeMinutes: Int,
+    val daysWithActivity: Int,
+    val targetDays: Int,
+    val goldStars: Int,
+    val silverStars: Int,
+    val bronzeStars: Int
+) {
+    val totalStars: Int
+        get() = goldStars + silverStars + bronzeStars
+
+    val weeklyGoalMet: Boolean
+        get() = daysWithActivity >= targetDays
+}

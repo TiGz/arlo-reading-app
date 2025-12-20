@@ -77,7 +77,7 @@
 
             </LinearLayout>
 
-            <!-- Score Display - Stars with streak indicator -->
+            <!-- Score Display - Multi-star with streak indicator -->
             <LinearLayout
                 android:id="@+id/scoreContainer"
                 android:layout_width="wrap_content"
@@ -86,34 +86,76 @@
                 android:background="@drawable/bg_score_pill"
                 android:gravity="center"
                 android:orientation="horizontal"
-                android:paddingHorizontal="12dp">
+                android:paddingHorizontal="10dp">
 
-                <!-- Star icon -->
+                <!-- Gold star + count -->
                 <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:contentDescription="Stars"
-                    android:src="@drawable/ic_star"
-                    app:tint="@color/accent_yellow" />
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:contentDescription="Gold stars"
+                    android:src="@drawable/ic_star_gold" />
 
-                <!-- Star count -->
                 <TextView
-                    android:id="@+id/tvStarCount"
+                    android:id="@+id/tvGoldStarCount"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
+                    android:layout_marginStart="2dp"
                     android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/text_primary"
-                    android:textSize="15sp"
+                    android:textColor="@color/star_gold_dark"
+                    android:textSize="13sp"
                     android:textStyle="bold"
-                    tools:text="127" />
+                    tools:text="5" />
+
+                <!-- Silver star + count -->
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginStart="6dp"
+                    android:contentDescription="Silver stars"
+                    android:src="@drawable/ic_star_silver" />
+
+                <TextView
+                    android:id="@+id/tvSilverStarCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="2dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/star_silver_dark"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    tools:text="3" />
+
+                <!-- Bronze star + count -->
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginStart="6dp"
+                    android:contentDescription="Bronze stars"
+                    android:src="@drawable/ic_star_bronze" />
+
+                <TextView
+                    android:id="@+id/tvBronzeStarCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="2dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/star_bronze_dark"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    tools:text="8" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="20dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:background="@color/divider" />
 
                 <!-- Streak fire (visible when on a streak) -->
                 <ImageView
                     android:id="@+id/ivStreakFire"
                     android:layout_width="18dp"
                     android:layout_height="18dp"
-                    android:layout_marginStart="6dp"
                     android:contentDescription="On a streak!"
                     android:src="@drawable/ic_fire"
                     android:visibility="gone"
@@ -133,6 +175,14 @@
                     android:visibility="gone"
                     tools:text="x5"
                     tools:visibility="visible" />
+
+                <!-- Legacy star count (hidden, for backwards compatibility) -->
+                <TextView
+                    android:id="@+id/tvStarCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:text="127" />
 
             </LinearLayout>
 
@@ -162,7 +212,39 @@
 
         </LinearLayout>
 
-        <!-- Row 2: Page/Sentence info + Quick controls -->
+        <!-- Row 2: Daily Progress Bar -->
+        <LinearLayout
+            android:id="@+id/dailyProgressContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="56dp"
+            android:paddingTop="6dp">
+
+            <ProgressBar
+                android:id="@+id/dailyProgressBar"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:layout_weight="1"
+                android:max="100"
+                android:progress="60"
+                android:progressDrawable="@drawable/bg_daily_progress" />
+
+            <TextView
+                android:id="@+id/tvDailyProgress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                tools:text="60/100 pts" />
+
+        </LinearLayout>
+
+        <!-- Row 3: Page/Sentence info + Quick controls -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
