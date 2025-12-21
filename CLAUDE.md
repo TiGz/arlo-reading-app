@@ -34,7 +34,7 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - **JSON:** Gson 2.10.1
 - **Image Loading:** Coil 2.5.0
 - **Architecture:** MVVM with ViewModels, LiveData, StateFlow, and Flow
-- **TTS:** Kokoro TTS server (Docker) with Android TTS fallback
+- **TTS:** Kokoro TTS (remote hosted) with Android TTS fallback
 - **Speech Recognition:** Google Speech Services (SpeechRecognizer)
 - **Audio:** ExoPlayer for Kokoro audio, SoundPool for feedback sounds
 - **Layout:** FlexboxLayout 3.0.0 for animated word display
@@ -268,22 +268,16 @@ data class SessionStats(
 - Invalid key (401) triggers re-entry dialog
 
 ### TTS Service
-- **Kokoro TTS (primary):** High-quality neural voices via Docker server
-  - Voices: `bf_emma`, `bf_isabella`, `bm_lewis`, `bm_george` (British)
+- **Kokoro TTS (primary):** High-quality neural voices via remote hosted server
+  - Voices: `bf_emma`, `bf_alice`, `bf_lily`, `bm_george`, `bm_lewis`, `bm_daniel`, `bm_fable` (British)
   - Word-level timestamps for precise highlighting
   - Audio playback via ExoPlayer
   - Pre-caching support for offline reading
+  - Server URL configured via `KOKORO_SERVER_URL` in local.properties
 - **Android TTS (fallback):** Google TTS → SVOX Pico → System default
 - **Language fallback:** US English → UK English → Default locale
 - `setOnRangeStartListener()` / `setOnSpeechDoneListener()` callbacks
 - `speakWithKokoro()` for Kokoro-first with Android fallback
-
-### Kokoro TTS Server
-- **Location:** `server/` directory with docker-compose.yml
-- **Port:** 8880 (configurable via `KOKORO_SERVER_URL` in local.properties)
-- **Endpoints:** `/dev/captioned_speech` (synthesis), `/v1/audio/voices` (list voices)
-- **Start:** `docker compose up -d`
-- **Test:** `curl http://localhost:8880/health`
 
 ### Animated Word Highlighting
 - **AnimatedSentenceView**: FlexboxLayout containing individual WordViews
@@ -414,8 +408,23 @@ Custom styles: `ArloFabStyle`, `ArloBookCard`, `ArloTextAppearance.*`, `ArloButt
 
 **local.properties** (not committed):
 ```properties
-KOKORO_SERVER_URL=http://192.168.x.x:8880
+KOKORO_SERVER_URL=https://your-kokoro-server.example.com
 ```
+
+## Scripts
+
+### Kokoro TTS Server Check
+
+Verify Kokoro TTS server connectivity and list available voices:
+
+```bash
+./scripts/check-kokoro.sh
+```
+
+This script reads `KOKORO_SERVER_URL` from `local.properties` and:
+1. Checks server health endpoint
+2. Lists all available voices (filters to British voices in app)
+3. Tests TTS synthesis with sample text
 
 ## Sound Assets
 

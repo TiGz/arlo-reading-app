@@ -170,12 +170,15 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
         availableVoices = ttsService.getAvailableVoices()
 
         if (availableVoices.isEmpty()) {
-            // Fallback to default Kokoro voices
+            // Fallback to default Kokoro voices (must match server's available voices)
             availableVoices = listOf(
                 TTSService.VoiceInfo("bf_emma", "Emma (British Female)", "en-GB", 400),
-                TTSService.VoiceInfo("bf_isabella", "Isabella (British Female)", "en-GB", 400),
+                TTSService.VoiceInfo("bf_alice", "Alice (British Female)", "en-GB", 400),
+                TTSService.VoiceInfo("bf_lily", "Lily (British Female)", "en-GB", 400),
+                TTSService.VoiceInfo("bm_george", "George (British Male)", "en-GB", 400),
                 TTSService.VoiceInfo("bm_lewis", "Lewis (British Male)", "en-GB", 400),
-                TTSService.VoiceInfo("bm_george", "George (British Male)", "en-GB", 400)
+                TTSService.VoiceInfo("bm_daniel", "Daniel (British Male)", "en-GB", 400),
+                TTSService.VoiceInfo("bm_fable", "Fable (British Male)", "en-GB", 400)
             )
         }
 
