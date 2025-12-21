@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Floating dot animation with staggered timing -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+
+    <translate
+        android:fromYDelta="0"
+        android:toYDelta="-8dp"
+        android:duration="800"
+        android:repeatMode="reverse"
+        android:repeatCount="infinite"
+        android:interpolator="@android:anim/accelerate_decelerate_interpolator" />
+
+    <alpha
+        android:fromAlpha="0.5"
+        android:toAlpha="1.0"
+        android:duration="800"
+        android:repeatMode="reverse"
+        android:repeatCount="infinite"
+        android:interpolator="@android:anim/accelerate_decelerate_interpolator" />
+
+</set>

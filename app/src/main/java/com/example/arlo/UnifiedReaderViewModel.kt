@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.arlo.data.Book
+import com.example.arlo.data.DailyStats
 import com.example.arlo.data.Page
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.data.SentenceData
@@ -102,6 +103,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val sentences: List<SentenceData> = emptyList(),
         val isPlaying: Boolean = false,
         val isLoading: Boolean = true,
+        val isLoadingAudio: Boolean = false,  // True when waiting for TTS audio to be fetched
         val pendingPageCount: Int = 0,
         val needsMorePages: Boolean = false,
         val autoAdvance: Boolean = true,  // Auto-advance to next sentence after TTS finishes
@@ -112,6 +114,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val collaborativeState: CollaborativeState = CollaborativeState.IDLE,
         val targetWord: String? = null,
         val attemptCount: Int = 0,
+        val retryCycleCount: Int = 0,  // Tracks how many times TTS has read the word (max 3 then give up)
         val lastAttemptSuccess: Boolean? = null,  // null = no attempt yet, true = success, false = failure
         val micLevel: Int = 0,  // 0-100 mic input level for visual feedback
         val isSpeakingTargetWord: Boolean = false,  // True when TTS is reading target word after failures
@@ -121,7 +124,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         // Gamification stats for current session
         val sessionStats: SessionStats = SessionStats(),
         val totalStars: Int = 0,  // Lifetime star count (loaded from DB)
-        val chapterTitle: String? = null  // Current chapter title if available
+        val chapterTitle: String? = null,  // Current chapter title if available
+        // Today's cumulative stats (persisted across app restarts)
+        val todayStats: DailyStats? = null,
+        val dailyPointsTarget: Int = 100  // Parent-configurable daily goal
     ) {
         val currentPage: Page? get() = pages.getOrNull(currentPageIndex)
         val currentSentence: SentenceData? get() = sentences.getOrNull(currentSentenceIndex)
@@ -223,6 +229,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Load initial total stars and observe ongoing changes.
+     * Also loads today's stats for cumulative display.
      */
     private fun loadAndObserveStats() {
         viewModelScope.launch {
@@ -233,6 +240,27 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Observe total stars for real-time updates
             statsRepository.observeTotalStars().collect { stars ->
                 _state.value = _state.value.copy(totalStars = stars ?: 0)
+            }
+        }
+
+        // Observe today's stats (cumulative across sessions)
+        viewModelScope.launch {
+            statsRepository.observeTodayStats().collect { todayStats ->
+                if (todayStats != null) {
+                    _state.value = _state.value.copy(
+                        todayStats = todayStats,
+                        dailyPointsTarget = todayStats.dailyPointsTarget
+                    )
+                }
+            }
+        }
+
+        // Observe parent settings for daily target changes
+        viewModelScope.launch {
+            statsRepository.observeParentSettings().collect { settings ->
+                if (settings != null) {
+                    _state.value = _state.value.copy(dailyPointsTarget = settings.dailyPointsTarget)
+                }
             }
         }
     }
@@ -329,6 +357,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             collaborativeState = CollaborativeState.IDLE
         )
         saveReadingPosition()
+
+        // Pre-cache new page's sentences immediately on page change
+        val sentenceTexts = sentences.map { it.text }
+        ttsCacheManager.ensureLookaheadCached(sentenceTexts, 0)
     }
 
     fun nextSentence() {
@@ -466,20 +498,37 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             }
 
             viewModelScope.launch {
-                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
-                    // Callback when TTS finishes
-                    if (_state.value.isPlaying) {
-                        if (_state.value.autoAdvance) {
-                            // Auto-advance mode: move to next sentence and keep reading
-                            nextSentence()
-                            if (_state.value.isPlaying && !_state.value.needsMorePages) {
-                                speakCurrentSentence()
+                // Check if audio is cached or in-flight - if not, show loading indicator
+                val isCached = ttsCacheManager.isCached(sentence.text)
+                val isInFlight = ttsCacheManager.isInFlight(sentence.text)
+                if (!isCached) {
+                    _state.value = _state.value.copy(isLoadingAudio = true)
+                    if (isInFlight) {
+                        Log.d(TAG, "Audio in-flight, waiting for existing request...")
+                    }
+                }
+
+                try {
+                    ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
+                        // Clear loading state when playback starts
+                        _state.value = _state.value.copy(isLoadingAudio = false)
+                        // Callback when TTS finishes
+                        if (_state.value.isPlaying) {
+                            if (_state.value.autoAdvance) {
+                                // Auto-advance mode: move to next sentence and keep reading
+                                nextSentence()
+                                if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                                    speakCurrentSentence()
+                                }
+                            } else {
+                                // Manual mode: stop after reading one sentence
+                                _state.value = _state.value.copy(isPlaying = false)
                             }
-                        } else {
-                            // Manual mode: stop after reading one sentence
-                            _state.value = _state.value.copy(isPlaying = false)
                         }
                     }
+                } finally {
+                    // Clear loading state
+                    _state.value = _state.value.copy(isLoadingAudio = false)
                 }
             }
         } else {
@@ -525,11 +574,34 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     /**
      * Trigger lookahead caching for the next N sentences.
      * Called when TTS playback starts to ensure upcoming sentences are pre-cached.
+     *
+     * This method now includes sentences from the next page when nearing the end
+     * of the current page to ensure seamless transitions between pages.
      */
     private fun triggerLookaheadCaching() {
         val current = _state.value
-        val sentenceTexts = current.sentences.map { it.text }
-        ttsCacheManager.ensureLookaheadCached(sentenceTexts, current.currentSentenceIndex)
+        val currentSentences = current.sentences.map { it.text }
+
+        // Calculate how many sentences are left on this page after current position
+        val remainingOnCurrentPage = currentSentences.size - current.currentSentenceIndex - 1
+        val lookaheadCount = 10  // Must match TTSCacheManager.LOOKAHEAD_COUNT
+
+        // If we have fewer than lookahead count remaining, include next page's sentences
+        val allSentenceTexts = if (remainingOnCurrentPage < lookaheadCount) {
+            val nextPageIndex = current.currentPageIndex + 1
+            if (nextPageIndex < current.pages.size) {
+                val nextPage = current.pages[nextPageIndex]
+                val nextPageSentences = parseSentencesForPage(nextPage).map { it.text }
+                Log.d("TTSCache", "Including ${nextPageSentences.size} sentences from next page in lookahead")
+                currentSentences + nextPageSentences
+            } else {
+                currentSentences
+            }
+        } else {
+            currentSentences
+        }
+
+        ttsCacheManager.ensureLookaheadCached(allSentenceTexts, current.currentSentenceIndex)
     }
 
     /**
@@ -1004,6 +1076,13 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val (targetWords, range) = extractTargetWords(sentence.text)
         Log.d(TAG, "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
 
+        // Skip collaborative for quoted speech - speech recognition struggles with these
+        if (targetWords.contains("'") || targetWords.contains("\"")) {
+            Log.d(TAG, "Quoted speech in target words, skipping collaboration: '$targetWords'")
+            speakCurrentSentenceAndAutoAdvance()
+            return
+        }
+
         // Store target words locally only - don't set in state until TTS finishes
         // Setting targetWord in state while TTS is playing causes "Your turn!" to show prematurely
         currentTargetWords = targetWords
@@ -1011,6 +1090,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             targetWord = null,  // Will be set when TTS finishes in onPartialTTSComplete
             ttsHasPronouncedTargetWord = false,  // Reset for new word
             attemptCount = 0,
+            retryCycleCount = 0,  // Reset retry cycles for new sentence
             lastAttemptSuccess = null,
             collaborativeState = CollaborativeState.IDLE,
             isPlaying = true
@@ -1042,18 +1122,21 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             val firstTargetWord = targetWords.split(" ").first()
             var stopAtMs = ttsCacheManager.findWordTimestamp(sentence.text, firstTargetWord)
 
-            // Cache miss - synthesize the sentence first, then find timestamp from result
+            // Cache miss - use getOrSynthesize which handles request deduplication
             if (stopAtMs == null) {
                 Log.d(TAG, "Collaborative: cache miss, synthesizing sentence first")
+                _state.value = _state.value.copy(isLoadingAudio = true)
                 try {
-                    val kokoroVoice = ttsService.getKokoroVoice()
-                    val result = ttsService.synthesizeKokoroForCache(sentence.text, kokoroVoice)
-                    // Find timestamp directly from the synthesis result (avoids race with async cache save)
-                    stopAtMs = ttsCacheManager.findWordTimestampInJson(result.timestampsJson, firstTargetWord)
-                    // Save to cache in background for future playback
-                    ttsCacheManager.saveToCache(sentence.text, result.audioBytes, result.timestampsJson)
+                    // Use the queue-based synthesis - this will wait if request is already in-flight
+                    val result = ttsCacheManager.getOrSynthesize(sentence.text)
+                    if (result != null) {
+                        // Find timestamp from the synthesis result
+                        stopAtMs = ttsCacheManager.findWordTimestampInJson(result.timestampsJson, firstTargetWord)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to synthesize sentence: ${e.message}")
+                } finally {
+                    _state.value = _state.value.copy(isLoadingAudio = false)
                 }
             }
 
@@ -1323,9 +1406,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
             viewModelScope.launch(Dispatchers.IO) {
                 val pageId = current.currentPage?.id ?: 0L
+                val sentenceIndex = current.currentSentenceIndex
                 val attemptResult = statsRepository.recordCollaborativeAttempt(
                     bookId = bookId,
                     pageId = pageId,
+                    sentenceIndex = sentenceIndex,
                     targetWord = targetWord,
                     spokenWord = results.firstOrNull(),
                     isCorrect = true,
@@ -1383,9 +1468,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Failure - record attempt and reset streak
             viewModelScope.launch(Dispatchers.IO) {
                 val pageId = current.currentPage?.id ?: 0L
+                val sentenceIndex = current.currentSentenceIndex
                 statsRepository.recordCollaborativeAttempt(
                     bookId = bookId,
                     pageId = pageId,
+                    sentenceIndex = sentenceIndex,
                     targetWord = targetWord,
                     spokenWord = results.firstOrNull(),
                     isCorrect = false,
@@ -1436,6 +1523,23 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         val sentence = _state.value.currentSentence ?: return
 
+        // Increment retry cycle count
+        val newRetryCycleCount = _state.value.retryCycleCount + 1
+
+        // After 3 retry cycles (9 total attempts), give up and move to next sentence
+        if (newRetryCycleCount >= 3) {
+            Log.d(TAG, "Max retry cycles reached ($newRetryCycleCount), moving to next sentence")
+            _state.value = _state.value.copy(
+                collaborativeState = CollaborativeState.IDLE,
+                targetWord = null,
+                attemptCount = 0,
+                retryCycleCount = 0,
+                isSpeakingTargetWord = false
+            )
+            nextSentence()
+            return
+        }
+
         // Clear any previous highlight listener - we don't want position-based highlighting
         // for just the target word (positions would be wrong when playing partial)
         ttsService.setOnRangeStartListener { _, _ -> /* no-op */ }
@@ -1447,7 +1551,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             isSpeakingTargetWord = true,
             ttsHasPronouncedTargetWord = true,  // This word was TTS-spoken, so it's a bronze star
             highlightRange = null,  // Clear any stale highlight range
-            lastAttemptSuccess = null  // Reset so highlight will be green when listening starts
+            lastAttemptSuccess = null,  // Reset so highlight will be green when listening starts
+            retryCycleCount = newRetryCycleCount  // Track retry cycle
         )
 
         viewModelScope.launch {

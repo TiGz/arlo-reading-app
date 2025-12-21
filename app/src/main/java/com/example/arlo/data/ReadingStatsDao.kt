@@ -349,6 +349,44 @@ interface ReadingStatsDao {
 
     @Query("SELECT SUM(durationMs) FROM reading_sessions")
     suspend fun getTotalReadingTimeAllTime(): Long?
+
+    // ==================== COMPLETED SENTENCES ====================
+
+    /**
+     * Check if a sentence has already been completed (awarded stars).
+     * Returns true if the sentence exists in completed_sentences table.
+     */
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM completed_sentences
+            WHERE bookId = :bookId AND pageId = :pageId AND sentenceIndex = :sentenceIndex
+        )
+    """)
+    suspend fun isSentenceCompleted(bookId: Long, pageId: Long, sentenceIndex: Int): Boolean
+
+    /**
+     * Mark a sentence as completed. Uses IGNORE to prevent duplicates.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCompletedSentence(sentence: CompletedSentence)
+
+    /**
+     * Get all completed sentences for a page (for UI indicators).
+     */
+    @Query("SELECT * FROM completed_sentences WHERE bookId = :bookId AND pageId = :pageId")
+    suspend fun getCompletedSentencesForPage(bookId: Long, pageId: Long): List<CompletedSentence>
+
+    /**
+     * Count total unique sentences completed (for lifetime stats).
+     */
+    @Query("SELECT COUNT(*) FROM completed_sentences")
+    suspend fun getTotalCompletedSentences(): Int
+
+    /**
+     * Observe total completed sentences count.
+     */
+    @Query("SELECT COUNT(*) FROM completed_sentences")
+    fun observeTotalCompletedSentences(): Flow<Int>
 }
 
 /**

@@ -21,9 +21,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // New entities for gamification v2
         StreakState::class,
         ParentSettings::class,
-        ReadingSession::class
+        ReadingSession::class,
+        CompletedSentence::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(SentenceListConverter::class)
@@ -287,6 +288,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add sentenceIndex to collaborative_attempts for tracking which sentence was attempted
+                db.execSQL("ALTER TABLE collaborative_attempts ADD COLUMN sentenceIndex INTEGER NOT NULL DEFAULT 0")
+
+                // Create completed_sentences table to track sentences that have been successfully starred
+                // This prevents gaming by re-reading the same sentences to farm stars
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS completed_sentences (
+                        bookId INTEGER NOT NULL,
+                        pageId INTEGER NOT NULL,
+                        sentenceIndex INTEGER NOT NULL,
+                        completedAt INTEGER NOT NULL DEFAULT 0,
+                        starType TEXT NOT NULL,
+                        PRIMARY KEY (bookId, pageId, sentenceIndex)
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_completed_sentences_book_page ON completed_sentences(bookId, pageId)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -297,7 +319,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                    MIGRATION_9_10
+                    MIGRATION_9_10, MIGRATION_10_11
                 )
                 .fallbackToDestructiveMigration()
                 .build()

@@ -2,12 +2,16 @@ package com.example.arlo.tts
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Manages pre-caching of TTS audio for sentences.
@@ -19,6 +23,8 @@ import java.security.MessageDigest
  * - Store in context.filesDir/tts_cache/ (persistent storage)
  * - Filename: {md5_hash}_{voice}.mp3 with .json sidecar for timestamps
  * - File existence = cache hit (no database tracking)
+ * - Single request queue: if a request for the same cache key is in-flight,
+ *   we wait for it instead of making a duplicate request
  */
 class TTSCacheManager(
     private val context: Context,
@@ -30,18 +36,111 @@ class TTSCacheManager(
         File(context.filesDir, "tts_cache").also { it.mkdirs() }
     }
 
-    // Track sentences currently being cached to avoid duplicate requests
-    private val cachingInProgress = mutableSetOf<String>()
-
     companion object {
         private const val TAG = "TTSCacheManager"
-        private const val LOOKAHEAD_COUNT = 5  // Cache next 5 sentences
+        private const val LOOKAHEAD_COUNT = 10  // Cache next 10 sentences
+    }
+
+    /**
+     * In-flight requests: maps cache key to a deferred result.
+     * If a request for a cache key is already in-flight, new requests
+     * will await the same deferred instead of making duplicate API calls.
+     */
+    private val inFlightRequests = ConcurrentHashMap<String, CompletableDeferred<SynthesisResult?>>()
+
+    /**
+     * Mutex to ensure only one synthesis request runs at a time.
+     * This prevents overwhelming the Kokoro server with parallel requests.
+     */
+    private val synthesisMutex = Mutex()
+
+    /**
+     * Result of a synthesis request, either from cache or fresh synthesis.
+     */
+    data class SynthesisResult(
+        val audioBytes: ByteArray,
+        val timestampsJson: String
+    )
+
+    /**
+     * Get or synthesize audio for a sentence.
+     * - If cached on disk, returns immediately
+     * - If another request for this sentence is in-flight, waits for it
+     * - Otherwise, queues a new synthesis request
+     *
+     * This is the primary method for getting TTS audio - handles all deduplication.
+     */
+    suspend fun getOrSynthesize(sentence: String): SynthesisResult? {
+        if (!ttsPreferences.isKokoroVoice()) return null
+        if (sentence.isBlank()) return null
+
+        val voice = ttsPreferences.getKokoroVoice()
+        val cacheKey = getCacheKey(sentence, voice)
+
+        // 1. Check disk cache first
+        val cached = getCachedAudio(sentence)
+        if (cached != null) {
+            Log.d(TAG, "Cache hit: ${sentence.take(40)}...")
+            return SynthesisResult(cached.audioBytes, cached.timestampsJson)
+        }
+
+        // 2. Check if this request is already in-flight
+        val existingRequest = inFlightRequests[cacheKey]
+        if (existingRequest != null) {
+            Log.d(TAG, "Waiting for in-flight request: ${sentence.take(40)}...")
+            return existingRequest.await()
+        }
+
+        // 3. Create a new deferred for this request
+        val deferred = CompletableDeferred<SynthesisResult?>()
+        val previousDeferred = inFlightRequests.putIfAbsent(cacheKey, deferred)
+
+        // Another thread beat us to it - wait for their result
+        if (previousDeferred != null) {
+            Log.d(TAG, "Another thread started request, waiting: ${sentence.take(40)}...")
+            return previousDeferred.await()
+        }
+
+        // 4. We own this request - synthesize with mutex to serialize requests
+        try {
+            val result = synthesisMutex.withLock {
+                // Double-check cache (another request might have completed while we waited)
+                val rechecked = getCachedAudio(sentence)
+                if (rechecked != null) {
+                    Log.d(TAG, "Cache hit after mutex wait: ${sentence.take(40)}...")
+                    return@withLock SynthesisResult(rechecked.audioBytes, rechecked.timestampsJson)
+                }
+
+                // Actually synthesize
+                Log.d(TAG, "Synthesizing: ${sentence.take(40)}...")
+                try {
+                    val apiResult = ttsService.synthesizeKokoroForCache(sentence, voice)
+
+                    // Save to disk cache
+                    val cacheFile = getCacheFile(sentence, voice)
+                    cacheFile.writeBytes(apiResult.audioBytes)
+                    val timestampsFile = File(cacheFile.absolutePath + ".json")
+                    timestampsFile.writeText(apiResult.timestampsJson)
+
+                    Log.d(TAG, "Synthesized and cached: ${sentence.take(40)}...")
+                    SynthesisResult(apiResult.audioBytes, apiResult.timestampsJson)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Synthesis failed: ${e.message}")
+                    null
+                }
+            }
+            deferred.complete(result)
+            return result
+        } finally {
+            // Remove from in-flight map
+            inFlightRequests.remove(cacheKey)
+        }
     }
 
     /**
      * Ensure the next N sentences are cached, starting from the current position.
      * Called when TTS playback starts to pre-cache upcoming sentences.
-     * Skips sentences already cached or currently being cached.
+     * Uses the shared request queue, so duplicate requests are automatically deduplicated.
      */
     fun ensureLookaheadCached(sentences: List<String>, currentIndex: Int) {
         if (!ttsPreferences.isKokoroVoice()) {
@@ -58,8 +157,7 @@ class TTSCacheManager(
             .filter { it.isNotBlank() }
             .filter { sentence ->
                 val cacheFile = getCacheFile(sentence, voice)
-                val needsCaching = !cacheFile.exists() && !cachingInProgress.contains(sentence)
-                needsCaching
+                !cacheFile.exists()
             }
 
         if (sentencesToCache.isEmpty()) {
@@ -67,82 +165,32 @@ class TTSCacheManager(
             return
         }
 
-        Log.d(TAG, "Lookahead: caching ${sentencesToCache.size} sentences starting from index ${currentIndex + 1}")
+        Log.d(TAG, "Lookahead: queueing ${sentencesToCache.size} sentences for caching")
 
-        scope.launch {
-            sentencesToCache.forEachIndexed { index, sentence ->
-                // Mark as in-progress to avoid duplicate requests
-                synchronized(cachingInProgress) {
-                    if (cachingInProgress.contains(sentence)) {
-                        Log.d(TAG, "Lookahead: sentence ${index + 1} already being cached, skipping")
-                        return@forEachIndexed
-                    }
-                    cachingInProgress.add(sentence)
-                }
-
-                try {
-                    val cacheFile = getCacheFile(sentence, voice)
-                    if (cacheFile.exists()) {
-                        Log.d(TAG, "Lookahead: sentence ${index + 1} cached by another request")
-                        return@forEachIndexed
-                    }
-
-                    val result = ttsService.synthesizeKokoroForCache(sentence, voice)
-                    cacheFile.writeBytes(result.audioBytes)
-                    val timestampsFile = File(cacheFile.absolutePath + ".json")
-                    timestampsFile.writeText(result.timestampsJson)
-                    Log.d(TAG, "Lookahead cached: ${sentence.take(40)}...")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Lookahead failed for sentence ${index + 1}: ${e.message}")
-                } finally {
-                    synchronized(cachingInProgress) {
-                        cachingInProgress.remove(sentence)
-                    }
-                }
+        // Queue each sentence - getOrSynthesize handles deduplication
+        sentencesToCache.forEach { sentence ->
+            scope.launch {
+                getOrSynthesize(sentence)
             }
         }
     }
 
     /**
      * Queue sentences for background TTS caching.
-     * Processes sentences SEQUENTIALLY (one at a time) to avoid overwhelming the server.
      * Only runs if current voice is Kokoro (network-based).
      */
     fun queueSentencesForCaching(sentences: List<String>, pageId: Long) {
-        // Only cache for Kokoro voices
         if (!ttsPreferences.isKokoroVoice()) {
             Log.d(TAG, "Skipping TTS pre-cache - using on-device voice")
             return
         }
 
-        val voice = ttsPreferences.getKokoroVoice()
+        Log.d(TAG, "Queueing ${sentences.size} sentences for page $pageId")
 
-        scope.launch {
-            Log.d(TAG, "Starting TTS pre-cache for page $pageId: ${sentences.size} sentences with voice $voice")
-
-            sentences.forEachIndexed { index, sentence ->
-                if (sentence.isBlank()) return@forEachIndexed
-
-                val cacheFile = getCacheFile(sentence, voice)
-                if (cacheFile.exists()) {
-                    Log.d(TAG, "Sentence ${index + 1}/${sentences.size} already cached")
-                    return@forEachIndexed
-                }
-
-                try {
-                    val result = ttsService.synthesizeKokoroForCache(sentence, voice)
-                    cacheFile.writeBytes(result.audioBytes)
-                    // Save timestamps as JSON sidecar file
-                    val timestampsFile = File(cacheFile.absolutePath + ".json")
-                    timestampsFile.writeText(result.timestampsJson)
-                    Log.d(TAG, "Cached sentence ${index + 1}/${sentences.size}: ${sentence.take(40)}...")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to cache sentence ${index + 1}: ${e.message}")
-                    // Continue with other sentences - don't let one failure stop all
-                }
+        sentences.filter { it.isNotBlank() }.forEach { sentence ->
+            scope.launch {
+                getOrSynthesize(sentence)
             }
-
-            Log.d(TAG, "TTS pre-cache complete for page $pageId")
         }
     }
 
@@ -180,6 +228,16 @@ class TTSCacheManager(
     }
 
     /**
+     * Check if a request for this sentence is currently in-flight.
+     */
+    fun isInFlight(sentence: String): Boolean {
+        if (!ttsPreferences.isKokoroVoice()) return false
+        val voice = ttsPreferences.getKokoroVoice()
+        val cacheKey = getCacheKey(sentence, voice)
+        return inFlightRequests.containsKey(cacheKey)
+    }
+
+    /**
      * Save synthesized audio to cache for future playback.
      * Called after successful network synthesis to populate cache opportunistically.
      */
@@ -213,102 +271,15 @@ class TTSCacheManager(
      */
     fun findWordTimestamp(sentence: String, targetWord: String, findLast: Boolean = true): Long? {
         val cached = getCachedAudio(sentence) ?: return null
+        return findWordTimestampInJson(cached.timestampsJson, targetWord, findLast)
+    }
 
-        return try {
-            val array = org.json.JSONArray(cached.timestampsJson)
-            val targetNormalized = targetWord.lowercase().replace(Regex("[^a-z']"), "")
-
-            // Log all available timestamps for debugging
-            val availableWords = mutableListOf<String>()
-            for (i in 0 until array.length()) {
-                availableWords.add(array.getJSONObject(i).getString("word"))
-            }
-            Log.d(TAG, "Looking for '$targetWord' (findLast=$findLast) in timestamps: $availableWords")
-
-            // First pass: exact match - find last occurrence if findLast=true
-            var lastMatchTime: Double? = null
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                val word = obj.getString("word")
-                val wordNormalized = word.lowercase().replace(Regex("[^a-z']"), "")
-
-                if (wordNormalized == targetNormalized) {
-                    val startTime = obj.getDouble("start_time")
-                    if (findLast) {
-                        lastMatchTime = startTime  // Keep updating to get last match
-                    } else {
-                        Log.d(TAG, "Found exact match for '$targetWord' at ${startTime}s")
-                        return (startTime * 1000).toLong()
-                    }
-                }
-            }
-
-            if (lastMatchTime != null) {
-                Log.d(TAG, "Found last exact match for '$targetWord' at ${lastMatchTime}s")
-                return (lastMatchTime * 1000).toLong()
-            }
-
-            // Second pass: target word contained in timestamp word
-            // This handles cases like "Mirror Cliffs" being a single timestamp "Mirror Cliffs"
-            var lastPartialMatchTime: Double? = null
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                val word = obj.getString("word")
-                val wordNormalized = word.lowercase().replace(Regex("[^a-z']"), "")
-
-                if (wordNormalized.contains(targetNormalized) && targetNormalized.length >= 3) {
-                    val startTime = obj.getDouble("start_time")
-                    if (findLast) {
-                        lastPartialMatchTime = startTime
-                    } else {
-                        Log.d(TAG, "Found partial match: '$targetWord' in '$word' at ${startTime}s")
-                        return (startTime * 1000).toLong()
-                    }
-                }
-            }
-
-            if (lastPartialMatchTime != null) {
-                Log.d(TAG, "Found last partial match for '$targetWord' at ${lastPartialMatchTime}s")
-                return (lastPartialMatchTime * 1000).toLong()
-            }
-
-            // Third pass: estimate position if timestamps are truncated
-            // Kokoro sometimes returns incomplete timestamps for sentences with hyphens
-            // Estimate based on word position in sentence
-            val sentenceWords = sentence.split(Regex("\\s+"))
-            val targetIndex = sentenceWords.indexOfFirst { word ->
-                word.lowercase().replace(Regex("[^a-z']"), "") == targetNormalized
-            }
-
-            if (targetIndex >= 0 && array.length() > 0) {
-                // Get the last timestamp and estimate from there
-                val lastObj = array.getJSONObject(array.length() - 1)
-                val lastEndTime = lastObj.getDouble("end_time")
-                val timestampedWordCount = array.length()
-
-                // Estimate remaining words' duration
-                val remainingWords = sentenceWords.size - timestampedWordCount
-                if (remainingWords > 0 && targetIndex >= timestampedWordCount) {
-                    // Estimate average word duration from existing timestamps
-                    val avgDuration = lastEndTime / timestampedWordCount
-                    val wordsUntilTarget = targetIndex - timestampedWordCount
-                    val estimatedStart = lastEndTime + (avgDuration * wordsUntilTarget)
-                    Log.d(TAG, "Estimated position for '$targetWord': ${estimatedStart}s (word $targetIndex of ${sentenceWords.size})")
-                    return (estimatedStart * 1000).toLong()
-                }
-            }
-
-            Log.d(TAG, "Word '$targetWord' not found in timestamps for: ${sentence.take(40)}...")
-            null
-        } catch (e: Exception) {
-            Log.w(TAG, "Error parsing timestamps: ${e.message}")
-            null
-        }
+    private fun getCacheKey(sentence: String, voice: String): String {
+        return "${md5(sentence.trim())}_${voice}"
     }
 
     private fun getCacheFile(sentence: String, voice: String): File {
-        val hash = md5(sentence.trim())
-        return File(cacheDir, "${hash}_${voice}.mp3")
+        return File(cacheDir, "${getCacheKey(sentence, voice)}.mp3")
     }
 
     private fun md5(input: String): String {

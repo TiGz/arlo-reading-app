@@ -160,7 +160,26 @@ data class CollaborativeAttempt(
     val pointsEarned: Int = 0,           // Points including streak bonus
     val ttsPronouncedWord: Boolean = false,  // True if TTS read word before success
     val sessionStreak: Int = 0,          // Streak count when attempt was made
-    val streakBonus: Int = 0             // Bonus points from streak multiplier
+    val streakBonus: Int = 0,            // Bonus points from streak multiplier
+    val sentenceIndex: Int = 0           // Which sentence in the page (for deduplication)
+)
+
+/**
+ * Tracks sentences that have been successfully completed (starred).
+ * Prevents gaming by re-reading the same sentences to farm stars.
+ * Uses composite primary key: bookId + pageId + sentenceIndex.
+ */
+@Entity(
+    tableName = "completed_sentences",
+    primaryKeys = ["bookId", "pageId", "sentenceIndex"],
+    indices = [Index(value = ["bookId", "pageId"])]
+)
+data class CompletedSentence(
+    val bookId: Long,
+    val pageId: Long,
+    val sentenceIndex: Int,
+    val completedAt: Long = System.currentTimeMillis(),
+    val starType: String  // Best star earned: "GOLD", "SILVER", "BRONZE"
 )
 
 /**

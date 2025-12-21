@@ -390,6 +390,23 @@
 
                             </LinearLayout>
 
+                            <!-- Test Speed Button -->
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnTestSpeed"
+                                style="@style/Widget.Material3.Button.TonalButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:layout_marginStart="8dp"
+                                android:minWidth="0dp"
+                                android:paddingHorizontal="16dp"
+                                android:text="Test"
+                                android:textSize="13sp"
+                                app:cornerRadius="18dp"
+                                app:icon="@drawable/ic_play"
+                                app:iconSize="16dp"
+                                app:iconPadding="4dp"
+                                app:backgroundTint="@color/primary" />
+
                         </LinearLayout>
 
                         <LinearLayout

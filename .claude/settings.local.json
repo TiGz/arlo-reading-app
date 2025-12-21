@@ -4,7 +4,25 @@
       "Bash(./gradlew assembleDebug:*)",
       "Bash(./gradlew installDebug:*)",
       "Skill(compound-engineering:frontend-design)",
-      "Skill(compound-engineering:frontend-design:*)"
+      "Skill(compound-engineering:frontend-design:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 200)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 500)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(/Users/adam/dev/personal/arlo-reading-app/scripts/check-kokoro.sh:*)",
+      "Bash(git add:*)",
+      "Bash(ls:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: Update Kokoro TTS to use remote server and fix voice list\n\n- Switch from local Docker server to remote hosted Kokoro TTS\n- Fix voice list to match server''s available voices \\(bf_isabella no longer exists\\)\n- Add check-kokoro.sh script to verify server connectivity and list voices\n- Update CLAUDE.md with new TTS configuration and script docs\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell am start -n com.example.arlo/.MainActivity)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 300)",
+      "Bash(./scripts/check-kokoro.sh:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -c)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb install:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell am force-stop com.example.arlo)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell monkey -p com.example.arlo -c android.intent.category.LAUNCHER 1)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 100)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 1000)"
     ]
   }
 }

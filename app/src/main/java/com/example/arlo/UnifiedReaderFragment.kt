@@ -6,6 +6,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
+import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import com.example.arlo.ui.WordHighlightState
 import com.example.arlo.ui.VoiceWaveView
@@ -47,6 +48,11 @@ class UnifiedReaderFragment : Fragment() {
     // Track previous values for animation triggers
     private var lastStarCount = 0
     private var lastStreakCount = 0
+
+    // Loading dot animations
+    private var dotAnimation1: Animation? = null
+    private var dotAnimation2: Animation? = null
+    private var dotAnimation3: Animation? = null
 
     // Permission launcher for RECORD_AUDIO
     private val requestAudioPermission = registerForActivityResult(
@@ -199,6 +205,9 @@ class UnifiedReaderFragment : Fragment() {
         // Loading
         binding.loadingOverlay.visibility = if (state.isLoading) View.VISIBLE else View.GONE
 
+        // Audio loading indicator (when fetching TTS from server)
+        updateAudioLoadingIndicator(state.isLoadingAudio)
+
         // Book title
         state.book?.let { book ->
             binding.tvBookTitle.text = book.title
@@ -213,29 +222,62 @@ class UnifiedReaderFragment : Fragment() {
             binding.tvChapterTitle.visibility = View.GONE
         }
 
-        // Gamification UI - Multi-star display
+        // Gamification UI - Multi-star display (today's cumulative stats)
         val sessionStats = state.sessionStats
-        binding.tvGoldStarCount.text = sessionStats.sessionGoldStars.toString()
-        binding.tvSilverStarCount.text = sessionStats.sessionSilverStars.toString()
-        binding.tvBronzeStarCount.text = sessionStats.sessionBronzeStars.toString()
+        val todayStats = state.todayStats
+
+        // Use today's cumulative stats (persisted) + current session's uncommitted stats
+        val todayGold = (todayStats?.goldStars ?: 0) + sessionStats.sessionGoldStars
+        val todaySilver = (todayStats?.silverStars ?: 0) + sessionStats.sessionSilverStars
+        val todayBronze = (todayStats?.bronzeStars ?: 0) + sessionStats.sessionBronzeStars
+
+        binding.tvGoldStarCount.text = todayGold.toString()
+        binding.tvSilverStarCount.text = todaySilver.toString()
+        binding.tvBronzeStarCount.text = todayBronze.toString()
 
         // Legacy total star count (hidden but kept for compatibility)
         val totalStars = state.totalStars + sessionStats.sessionStars
         binding.tvStarCount.text = totalStars.toString()
 
         // Animate star burst when stars increase
-        if (sessionStats.totalSessionStars > lastStarCount && lastStarCount > 0) {
+        val totalTodayStars = todayGold + todaySilver + todayBronze
+        if (totalTodayStars > lastStarCount && lastStarCount > 0) {
             val starBurst = AnimationUtils.loadAnimation(requireContext(), R.anim.star_burst)
             binding.scoreContainer.startAnimation(starBurst)
         }
-        lastStarCount = sessionStats.totalSessionStars
+        lastStarCount = totalTodayStars
 
-        // Daily progress bar
-        val dailyPoints = sessionStats.sessionPoints
-        val dailyTarget = 100  // TODO: Load from ParentSettings
-        binding.dailyProgressBar.max = dailyTarget
-        binding.dailyProgressBar.progress = dailyPoints.coerceAtMost(dailyTarget)
-        binding.tvDailyProgress.text = "$dailyPoints/$dailyTarget pts"
+        // Daily progress bar - shows today's total points including current session
+        val todayPoints = (todayStats?.totalPoints ?: 0) + sessionStats.sessionPoints
+        val dailyTarget = state.dailyPointsTarget
+
+        // Progress bar max expands to accommodate points beyond target (with visual marker at target)
+        val effectiveMax = maxOf(dailyTarget, todayPoints)
+        binding.dailyProgressBar.max = effectiveMax
+        binding.dailyProgressBar.progress = todayPoints
+
+        // Show/position target marker when user exceeds goal
+        if (todayPoints > dailyTarget && effectiveMax > dailyTarget) {
+            binding.targetMarker.visibility = View.VISIBLE
+            // Position the marker at the original target position
+            binding.dailyProgressBar.post {
+                val progressBarWidth = binding.dailyProgressBar.width
+                val markerPosition = (dailyTarget.toFloat() / effectiveMax.toFloat() * progressBarWidth).toInt()
+                val params = binding.targetMarker.layoutParams as android.widget.FrameLayout.LayoutParams
+                params.marginStart = markerPosition - 1  // Center the 3dp marker
+                binding.targetMarker.layoutParams = params
+            }
+        } else {
+            binding.targetMarker.visibility = View.GONE
+        }
+
+        // Show goal marker position for reference when over target
+        val progressText = if (todayPoints >= dailyTarget) {
+            "$todayPoints pts \u2713"  // Unicode checkmark
+        } else {
+            "$todayPoints/$dailyTarget pts"
+        }
+        binding.tvDailyProgress.text = progressText
 
         // Streak fire indicator
         val currentStreak = sessionStats.currentStreak
@@ -487,6 +529,42 @@ class UnifiedReaderFragment : Fragment() {
                 else -> R.drawable.bg_attempt_dot_inactive
             }
             dot.setBackgroundResource(bgRes)
+        }
+    }
+
+    /**
+     * Show or hide the audio loading indicator with gentle floating dot animations.
+     */
+    private fun updateAudioLoadingIndicator(isLoading: Boolean) {
+        if (isLoading) {
+            binding.audioLoadingIndicator.visibility = View.VISIBLE
+
+            // Start staggered floating animations for the dots
+            if (dotAnimation1 == null) {
+                dotAnimation1 = AnimationUtils.loadAnimation(requireContext(), R.anim.float_dots)
+                dotAnimation2 = AnimationUtils.loadAnimation(requireContext(), R.anim.float_dots).apply {
+                    startOffset = 150  // Stagger by 150ms
+                }
+                dotAnimation3 = AnimationUtils.loadAnimation(requireContext(), R.anim.float_dots).apply {
+                    startOffset = 300  // Stagger by 300ms
+                }
+            }
+
+            binding.loadingDot1.startAnimation(dotAnimation1)
+            binding.loadingDot2.startAnimation(dotAnimation2)
+            binding.loadingDot3.startAnimation(dotAnimation3)
+
+            // Pulse the container
+            val pulseAnimation = AnimationUtils.loadAnimation(requireContext(), R.anim.pulse_gentle)
+            binding.audioLoadingIndicator.startAnimation(pulseAnimation)
+        } else {
+            binding.audioLoadingIndicator.visibility = View.GONE
+
+            // Stop animations
+            binding.loadingDot1.clearAnimation()
+            binding.loadingDot2.clearAnimation()
+            binding.loadingDot3.clearAnimation()
+            binding.audioLoadingIndicator.clearAnimation()
         }
     }
 
@@ -852,11 +930,13 @@ class UnifiedReaderFragment : Fragment() {
     }
 
     /**
-     * Show parent settings dialog (long-press settings button or 5-tap gesture).
+     * Show parent settings dialog.
+     * @param forceParentMode When true, shows full parent settings even if kid mode is enabled.
+     *                        Used for secret tap unlock.
      */
-    private fun showParentSettings() {
+    private fun showParentSettings(forceParentMode: Boolean = false) {
         viewModel.stopReading()
-        ParentSettingsDialogFragment.newInstance()
+        ParentSettingsDialogFragment.newInstance(forceParentMode)
             .show(parentFragmentManager, ParentSettingsDialogFragment.TAG)
     }
 
@@ -877,9 +957,9 @@ class UnifiedReaderFragment : Fragment() {
 
         if (secretTapCount >= SECRET_TAP_COUNT_REQUIRED) {
             secretTapCount = 0
-            // Open parent settings dialog
-            showParentSettings()
-            Toast.makeText(requireContext(), "Parent settings", Toast.LENGTH_SHORT).show()
+            // Open parent settings dialog with force parent mode (secret unlock)
+            showParentSettings(forceParentMode = true)
+            Toast.makeText(requireContext(), "Parent settings unlocked", Toast.LENGTH_SHORT).show()
         }
     }
 

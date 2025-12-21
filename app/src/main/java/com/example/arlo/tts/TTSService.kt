@@ -9,6 +9,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Base64
 import android.util.Log
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.arlo.BuildConfig
@@ -501,13 +502,15 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
      * Play audio with word timestamps and optional clipping.
      * @param startMs Start position in ms (0 = beginning)
      * @param endMs End position in ms (null = play to end)
+     * @param playbackSpeed Playback speed multiplier (default uses speechRate)
      */
     private fun playWithTimestamps(
         audioBytes: ByteArray,
         timestamps: List<WordTimestamp>,
         onComplete: () -> Unit,
         startMs: Long = 0,
-        endMs: Long? = null
+        endMs: Long? = null,
+        playbackSpeed: Float? = null
     ) {
         // Clean up any previous playback
         stopKokoroPlayback()
@@ -533,8 +536,10 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
         val mediaItem = mediaItemBuilder.build()
 
         // Setup ExoPlayer
+        val speed = playbackSpeed ?: speechRate
         exoPlayer = ExoPlayer.Builder(context).build().apply {
             setMediaItem(mediaItem)
+            playbackParameters = PlaybackParameters(speed)
 
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -551,15 +556,15 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
 
         // Schedule word highlights by finding actual positions in original text
         // Filter out punctuation-only timestamps (Kokoro returns commas, periods as separate words)
-        // Only highlight words within the play range, adjusting timing for startMs offset
+        // Only highlight words within the play range, adjusting timing for startMs offset and playback speed
         val originalText = currentPlaybackText ?: ""
         var searchStart = 0
         timestamps
             .filter { it.word.any { c -> c.isLetterOrDigit() } }  // Skip punctuation-only entries
             .filter { it.startMs >= startMs && (endMs == null || it.startMs < endMs) }  // Within range
             .forEach { wordTs ->
-                // Adjust timing to account for clipping offset
-                val adjustedDelayMs = wordTs.startMs - startMs
+                // Adjust timing to account for clipping offset and playback speed
+                val adjustedDelayMs = ((wordTs.startMs - startMs) / speed).toLong()
                 highlightHandler.postDelayed({
                     // Find this word in the original text starting from searchStart
                     val wordStart = originalText.indexOf(wordTs.word, searchStart, ignoreCase = true)
@@ -793,8 +798,9 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
 
     /**
      * Preview a Kokoro voice with sample text.
+     * @param speed Optional playback speed (defaults to 1.0 for voice preview)
      */
-    suspend fun speakKokoroPreview(text: String, voice: String) {
+    suspend fun speakKokoroPreview(text: String, voice: String, speed: Float = 1.0f) {
         if (kokoroServerUrl == null) return
 
         try {
@@ -825,7 +831,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
 
             // Play on main thread (ExoPlayer requires it)
             withContext(Dispatchers.Main) {
-                playWithTimestamps(audioBytes, emptyList(), onComplete = {})
+                playWithTimestamps(audioBytes, emptyList(), onComplete = {}, playbackSpeed = speed)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Kokoro preview error: ${e.message}", e)

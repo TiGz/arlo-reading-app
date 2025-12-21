@@ -49,9 +49,13 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
 
     companion object {
         const val TAG = "ParentSettingsDialog"
-        private const val PREVIEW_SENTENCE = "Hello! I'm your reading voice."
+        private const val ARG_FORCE_PARENT_MODE = "force_parent_mode"
 
-        fun newInstance() = ParentSettingsDialogFragment()
+        fun newInstance(forceParentMode: Boolean = false) = ParentSettingsDialogFragment().apply {
+            arguments = Bundle().apply {
+                putBoolean(ARG_FORCE_PARENT_MODE, forceParentMode)
+            }
+        }
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
@@ -95,8 +99,9 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
         ttsPreferences = TTSPreferences(requireContext())
         ttsService = app.ttsService
 
-        // Check if we're in kid mode
-        isKidMode = ttsPreferences.getKidMode()
+        // Check if we're in kid mode (secret tap overrides this)
+        val forceParentMode = arguments?.getBoolean(ARG_FORCE_PARENT_MODE, false) ?: false
+        isKidMode = if (forceParentMode) false else ttsPreferences.getKidMode()
 
         // Configure UI based on mode
         configureForMode()
@@ -222,34 +227,28 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 // No action needed
             }
         }
-
-        // Pre-cache preview audio for all voices
-        cacheVoicePreviews()
+        // Voice previews are pre-cached on app startup in ArloApplication
     }
 
     /**
-     * Play a preview sentence with the specified voice.
+     * Play a preview sentence with the specified voice (at normal speed for voice preview).
      */
     private fun playVoicePreview(voiceId: String) {
         viewLifecycleOwner.lifecycleScope.launch {
-            ttsService.speakKokoroPreview(PREVIEW_SENTENCE, voiceId)
+            ttsService.speakKokoroPreview(ArloApplication.PREVIEW_SENTENCE, voiceId)
         }
     }
 
     /**
-     * Pre-cache preview audio for all available voices in background.
+     * Play a preview sentence with the currently selected voice at the current speed setting.
      */
-    private fun cacheVoicePreviews() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                availableVoices.forEach { voice ->
-                    try {
-                        // Pre-synthesize preview for each voice (this caches it internally)
-                        ttsService.synthesizeKokoroForCache(PREVIEW_SENTENCE, voice.id)
-                    } catch (e: Exception) {
-                        // Silently ignore cache failures - preview will still work, just slower
-                    }
-                }
+    private fun playSpeedPreview() {
+        val selectedPosition = binding.spinnerVoice.selectedItemPosition
+        if (selectedPosition >= 0 && selectedPosition < availableVoices.size) {
+            val voiceId = availableVoices[selectedPosition].id
+            val speed = binding.sliderSpeechRate.value
+            viewLifecycleOwner.lifecycleScope.launch {
+                ttsService.speakKokoroPreview(ArloApplication.PREVIEW_SENTENCE, voiceId, speed)
             }
         }
     }
@@ -265,6 +264,11 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
         // Speech rate slider with dynamic label and value
         binding.sliderSpeechRate.addOnChangeListener { _, value, _ ->
             updateSpeedLabel(value)
+        }
+
+        // Test speed button
+        binding.btnTestSpeed.setOnClickListener {
+            playSpeedPreview()
         }
 
         // Save button

@@ -212,7 +212,7 @@
 
         </LinearLayout>
 
-        <!-- Row 2: Daily Progress Bar -->
+        <!-- Row 2: Daily Progress Bar with target marker -->
         <LinearLayout
             android:id="@+id/dailyProgressContainer"
             android:layout_width="match_parent"
@@ -222,15 +222,33 @@
             android:paddingHorizontal="56dp"
             android:paddingTop="6dp">
 
-            <ProgressBar
-                android:id="@+id/dailyProgressBar"
-                style="@android:style/Widget.ProgressBar.Horizontal"
+            <!-- Progress bar container with target marker overlay -->
+            <FrameLayout
                 android:layout_width="0dp"
-                android:layout_height="8dp"
-                android:layout_weight="1"
-                android:max="100"
-                android:progress="60"
-                android:progressDrawable="@drawable/bg_daily_progress" />
+                android:layout_height="wrap_content"
+                android:layout_weight="1">
+
+                <ProgressBar
+                    android:id="@+id/dailyProgressBar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:max="100"
+                    android:progress="60"
+                    android:progressDrawable="@drawable/bg_daily_progress" />
+
+                <!-- Target marker - shows where goal was when user exceeds it -->
+                <View
+                    android:id="@+id/targetMarker"
+                    android:layout_width="3dp"
+                    android:layout_height="12dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginTop="-2dp"
+                    android:background="@color/success"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+            </FrameLayout>
 
             <TextView
                 android:id="@+id/tvDailyProgress"
@@ -413,6 +431,66 @@
         </LinearLayout>
 
     </ScrollView>
+
+    <!-- Audio Loading Indicator - Gentle breathing animation -->
+    <LinearLayout
+        android:id="@+id/audioLoadingIndicator"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="32dp"
+        android:background="@drawable/bg_loading_bubble"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="32dp"
+        android:paddingVertical="24dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/collaborativeFeedbackSpace"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/processingBanner"
+        tools:visibility="visible">
+
+        <!-- Floating dots container -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <View
+                android:id="@+id/loadingDot1"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:background="@drawable/loading_dot" />
+
+            <View
+                android:id="@+id/loadingDot2"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/loading_dot" />
+
+            <View
+                android:id="@+id/loadingDot3"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/loading_dot" />
+
+        </LinearLayout>
+
+        <!-- Friendly message -->
+        <TextView
+            android:id="@+id/tvLoadingMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="Getting the voice ready..."
+            android:textColor="@color/primary"
+            android:textSize="16sp" />
+
+    </LinearLayout>
 
     <!-- Need More Pages Banner -->
     <LinearLayout

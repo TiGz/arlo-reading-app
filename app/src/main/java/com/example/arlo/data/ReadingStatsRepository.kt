@@ -178,8 +178,12 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
      * Record a collaborative reading attempt with star type tracking.
      * Returns AttemptResult with star type and points earned.
      *
+     * Stars are only awarded for sentences that haven't been completed before.
+     * This prevents gaming by re-reading the same sentences to farm stars.
+     *
      * @param bookId The book being read
      * @param pageId The current page
+     * @param sentenceIndex Which sentence in the page (for deduplication)
      * @param targetWord The word the child was supposed to say
      * @param spokenWord What speech recognition heard
      * @param isCorrect Whether the answer matched
@@ -190,6 +194,7 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
     suspend fun recordCollaborativeAttempt(
         bookId: Long,
         pageId: Long,
+        sentenceIndex: Int,
         targetWord: String,
         spokenWord: String?,
         isCorrect: Boolean,
@@ -199,16 +204,25 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
     ): AttemptResult {
         val isFirstTry = attemptNumber == 1 && isCorrect
 
-        // Determine star type using the new system
-        val starType = StarType.determine(attemptNumber, isCorrect, ttsPronouncedWord)
+        // Check if this sentence has already been completed (starred)
+        // If so, we still track the attempt but award no stars
+        val alreadyCompleted = dao.isSentenceCompleted(bookId, pageId, sentenceIndex)
+
+        // Determine star type - NONE if re-reading a completed sentence
+        val starType = if (alreadyCompleted && isCorrect) {
+            StarType.NONE  // No stars for re-reads
+        } else {
+            StarType.determine(attemptNumber, isCorrect, ttsPronouncedWord)
+        }
+
         val newStreak = if (isCorrect) currentStreak + 1 else 0
 
-        // Calculate points with streak bonus
+        // Calculate points with streak bonus (will be 0 if starType is NONE)
         val basePoints = starType.points
         val totalPoints = if (isCorrect) StarType.calculatePoints(starType, newStreak) else 0
         val streakBonus = totalPoints - basePoints
 
-        // Record the attempt with new fields
+        // Record the attempt with new fields (always, for history/analytics)
         dao.insertCollaborativeAttempt(CollaborativeAttempt(
             bookId = bookId,
             pageId = pageId,
@@ -216,47 +230,70 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
             spokenWord = spokenWord,
             isCorrect = isCorrect,
             attemptNumber = attemptNumber,
-            isFirstTrySuccess = isFirstTry,
-            starType = if (isCorrect) starType.name else null,
+            isFirstTrySuccess = isFirstTry && !alreadyCompleted,  // Only true for genuinely new sentences
+            starType = if (isCorrect && !alreadyCompleted) starType.name else null,
             pointsEarned = totalPoints,
             ttsPronouncedWord = ttsPronouncedWord,
             sessionStreak = newStreak,
-            streakBonus = streakBonus
+            streakBonus = streakBonus,
+            sentenceIndex = sentenceIndex
         ))
 
-        // Update daily stats with star type breakdown
-        val today = getTodayStats()
-        val bestStreak = maxOf(today.longestStreak, newStreak)
+        // Mark sentence as completed if this was a successful first completion
+        if (isCorrect && !alreadyCompleted && starType != StarType.NONE) {
+            dao.insertCompletedSentence(CompletedSentence(
+                bookId = bookId,
+                pageId = pageId,
+                sentenceIndex = sentenceIndex,
+                starType = starType.name
+            ))
+        }
 
-        // Get parent settings for daily target
-        val parentSettings = dao.getParentSettings() ?: ParentSettings()
-        val newTotalPoints = today.totalPoints + totalPoints
-        val goalMet = newTotalPoints >= parentSettings.dailyPointsTarget
+        // Only update daily stats if points were actually earned
+        if (totalPoints > 0) {
+            val today = getTodayStats()
+            val bestStreak = maxOf(today.longestStreak, newStreak)
 
-        dao.upsertDailyStats(today.copy(
-            perfectWords = if (isFirstTry) today.perfectWords + 1 else today.perfectWords,
-            totalCollaborativeAttempts = today.totalCollaborativeAttempts + 1,
-            successfulCollaborativeAttempts = if (isCorrect) today.successfulCollaborativeAttempts + 1 else today.successfulCollaborativeAttempts,
-            longestStreak = bestStreak,
-            // Legacy field for backwards compatibility
-            starsEarned = today.starsEarned + (if (starType != StarType.NONE) 1 else 0),
-            // New star type breakdown
-            goldStars = today.goldStars + (if (starType == StarType.GOLD) 1 else 0),
-            silverStars = today.silverStars + (if (starType == StarType.SILVER) 1 else 0),
-            bronzeStars = today.bronzeStars + (if (starType == StarType.BRONZE) 1 else 0),
-            totalPoints = newTotalPoints,
-            dailyPointsTarget = parentSettings.dailyPointsTarget,
-            goalMet = goalMet,
-            updatedAt = System.currentTimeMillis()
-        ))
+            // Get parent settings for daily target
+            val parentSettings = dao.getParentSettings() ?: ParentSettings()
+            val newTotalPoints = today.totalPoints + totalPoints
+            val goalMet = newTotalPoints >= parentSettings.dailyPointsTarget
 
-        // Update difficult word tracking
+            dao.upsertDailyStats(today.copy(
+                perfectWords = if (isFirstTry) today.perfectWords + 1 else today.perfectWords,
+                totalCollaborativeAttempts = today.totalCollaborativeAttempts + 1,
+                successfulCollaborativeAttempts = if (isCorrect) today.successfulCollaborativeAttempts + 1 else today.successfulCollaborativeAttempts,
+                longestStreak = bestStreak,
+                // Legacy field for backwards compatibility
+                starsEarned = today.starsEarned + (if (starType != StarType.NONE) 1 else 0),
+                // New star type breakdown
+                goldStars = today.goldStars + (if (starType == StarType.GOLD) 1 else 0),
+                silverStars = today.silverStars + (if (starType == StarType.SILVER) 1 else 0),
+                bronzeStars = today.bronzeStars + (if (starType == StarType.BRONZE) 1 else 0),
+                totalPoints = newTotalPoints,
+                dailyPointsTarget = parentSettings.dailyPointsTarget,
+                goalMet = goalMet,
+                updatedAt = System.currentTimeMillis()
+            ))
+        } else if (isCorrect) {
+            // Still update attempt counts even for re-reads (but no stars/points)
+            val today = getTodayStats()
+            dao.upsertDailyStats(today.copy(
+                totalCollaborativeAttempts = today.totalCollaborativeAttempts + 1,
+                successfulCollaborativeAttempts = today.successfulCollaborativeAttempts + 1,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
+
+        // Update difficult word tracking (still track for mastery even on re-reads)
         updateDifficultWord(targetWord, spokenWord, isCorrect, bookId)
 
-        // Update book stats
-        updateBookStatsForAttempt(bookId, starType, isCorrect, newStreak, totalPoints)
+        // Update book stats (only if points earned)
+        if (totalPoints > 0) {
+            updateBookStatsForAttempt(bookId, starType, isCorrect, newStreak, totalPoints)
+        }
 
-        // Update streak states
+        // Update streak states (streaks still continue even on re-reads)
         if (isCorrect) {
             updateStreakStates(newStreak)
         }
@@ -272,9 +309,9 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
 
     /**
      * Legacy method for backwards compatibility.
-     * Calls the new method with ttsPronouncedWord = false.
+     * Calls the new method with sentenceIndex = 0 and ttsPronouncedWord = false.
      */
-    @Deprecated("Use recordCollaborativeAttempt with ttsPronouncedWord parameter")
+    @Deprecated("Use recordCollaborativeAttempt with sentenceIndex parameter")
     suspend fun recordCollaborativeAttemptLegacy(
         bookId: Long,
         pageId: Long,
@@ -285,7 +322,7 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
         currentStreak: Int
     ): Int {
         val result = recordCollaborativeAttempt(
-            bookId, pageId, targetWord, spokenWord, isCorrect, attemptNumber, currentStreak, false
+            bookId, pageId, 0, targetWord, spokenWord, isCorrect, attemptNumber, currentStreak, false
         )
         return result.totalPoints
     }

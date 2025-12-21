@@ -17,6 +17,10 @@ import com.example.arlo.speech.SpeechSetupManager
 import com.example.arlo.tts.TTSCacheManager
 import com.example.arlo.tts.TTSPreferences
 import com.example.arlo.tts.TTSService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 class ArloApplication : Application() {
@@ -52,6 +56,11 @@ class ArloApplication : Application() {
 
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    companion object {
+        const val PREVIEW_SENTENCE = "Hello! I'm your reading voice."
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -68,6 +77,34 @@ class ArloApplication : Application() {
         // Run speech recognition diagnostics on background thread
         backgroundExecutor.execute {
             checkSpeechRecognitionAvailability()
+        }
+
+        // Pre-cache voice preview audio for settings
+        preCacheVoicePreviews()
+    }
+
+    /**
+     * Pre-cache voice preview audio for all available Kokoro voices.
+     * This runs on app startup so previews are instant when settings are opened.
+     */
+    private fun preCacheVoicePreviews() {
+        applicationScope.launch {
+            val voices = listOf(
+                "bf_emma", "bf_alice", "bf_lily",
+                "bm_george", "bm_lewis", "bm_daniel", "bm_fable"
+            )
+
+            Log.d("ArloApplication", "Pre-caching voice previews for ${voices.size} voices")
+            voices.forEach { voiceId ->
+                try {
+                    ttsService.synthesizeKokoroForCache(PREVIEW_SENTENCE, voiceId)
+                    Log.d("ArloApplication", "Cached preview for voice: $voiceId")
+                } catch (e: Exception) {
+                    // Silently ignore failures - preview will still work, just slower
+                    Log.w("ArloApplication", "Failed to cache preview for $voiceId: ${e.message}")
+                }
+            }
+            Log.d("ArloApplication", "Voice preview caching complete")
         }
     }
 
