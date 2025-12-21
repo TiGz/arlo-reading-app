@@ -63,6 +63,19 @@ class TTSPreferences(context: Context) {
         return voice.startsWith("bf_") || voice.startsWith("bm_")
     }
 
+    /**
+     * Maximum syllables allowed in a single target word for collaborative reading.
+     * 0 means "Any" (no limit) - all words allowed.
+     * 2, 3, or 4 means skip collaborative mode if any target word exceeds that syllable count.
+     */
+    fun saveMaxSyllables(maxSyllables: Int) {
+        prefs.edit().putInt(KEY_MAX_SYLLABLES, maxSyllables).apply()
+    }
+
+    fun getMaxSyllables(): Int {
+        return prefs.getInt(KEY_MAX_SYLLABLES, DEFAULT_MAX_SYLLABLES)
+    }
+
     companion object {
         private const val PREFS_NAME = "tts_preferences"
         private const val KEY_SPEECH_RATE = "speech_rate"
@@ -70,10 +83,12 @@ class TTSPreferences(context: Context) {
         private const val KEY_AUTO_ADVANCE = "auto_advance"
         private const val KEY_KOKORO_VOICE = "kokoro_voice"
         private const val KEY_KID_MODE = "kid_mode"
+        private const val KEY_MAX_SYLLABLES = "max_syllables"
         private const val DEFAULT_SPEECH_RATE = 1.0f
         private const val DEFAULT_COLLABORATIVE_MODE = true  // Default ON
         private const val DEFAULT_AUTO_ADVANCE = false  // Default OFF - one sentence at a time
         private const val DEFAULT_KOKORO_VOICE = "bm_lewis"  // British male (Kokoro)
         private const val DEFAULT_KID_MODE = true  // Default ON - kids locked into collaborative mode
+        private const val DEFAULT_MAX_SYLLABLES = 0  // 0 = "Any" (no limit)
     }
 }

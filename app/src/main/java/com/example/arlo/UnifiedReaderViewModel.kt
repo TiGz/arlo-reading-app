@@ -1083,6 +1083,24 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             return
         }
 
+        // Skip collaborative for words exceeding max syllable setting
+        val maxSyllables = ttsPreferences.getMaxSyllables()
+        if (maxSyllables > 0) {  // 0 means "Any" (no limit)
+            val targetWordsList = targetWords.split(" ")
+                .map { normalizeWord(it) }
+                .filter { it.isNotEmpty() }
+
+            val exceedsLimit = targetWordsList.any { word ->
+                countSyllables(word) > maxSyllables
+            }
+
+            if (exceedsLimit) {
+                Log.d(TAG, "Target word exceeds max syllables ($maxSyllables), skipping: '$targetWords'")
+                speakCurrentSentenceAndAutoAdvance()
+                return
+            }
+        }
+
         // Store target words locally only - don't set in state until TTS finishes
         // Setting targetWord in state while TTS is playing causes "Your turn!" to show prematurely
         currentTargetWords = targetWords

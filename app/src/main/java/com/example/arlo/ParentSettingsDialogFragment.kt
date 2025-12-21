@@ -46,6 +46,7 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
     private var availableVoices: List<TTSService.VoiceInfo> = emptyList()
     private var isKidMode: Boolean = false
     private var isInitialVoiceSelection: Boolean = true
+    private var selectedMaxSyllables: Int = 0  // 0 = Any (no limit)
 
     companion object {
         const val TAG = "ParentSettingsDialog"
@@ -124,8 +125,6 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.cardDailyGoals.isVisible = false
             binding.sectionReadingModesHeader.isVisible = false
             binding.cardReadingModes.isVisible = false
-            binding.sectionInterfaceHeader.isVisible = false
-            binding.cardKidMode.isVisible = false
         } else {
             // Parent Mode: Full "Parent Settings" with all options
             binding.tvSettingsTitle.text = "Parent Settings"
@@ -136,8 +135,6 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.cardDailyGoals.isVisible = true
             binding.sectionReadingModesHeader.isVisible = true
             binding.cardReadingModes.isVisible = true
-            binding.sectionInterfaceHeader.isVisible = true
-            binding.cardKidMode.isVisible = true
         }
     }
 
@@ -155,9 +152,12 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
 
                 // Set toggles
                 binding.switchStreakBonuses.isChecked = settings.enableStreakBonuses
-                binding.switchKidMode.isChecked = settings.kidModeEnabled
                 binding.switchCollaborative.isChecked = ttsPreferences.getCollaborativeMode()
                 binding.switchAutoAdvance.isChecked = ttsPreferences.getAutoAdvance()
+
+                // Load max syllables setting
+                selectedMaxSyllables = ttsPreferences.getMaxSyllables()
+                updateMaxSyllablesSelection(selectedMaxSyllables)
             }
 
             // Load TTS preferences (always available)
@@ -259,6 +259,18 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.sliderDailyTarget.addOnChangeListener { _, value, _ ->
                 binding.tvDailyTargetValue.text = value.toInt().toString()
             }
+
+            // Max syllables toggle group
+            binding.toggleMaxSyllables.addOnButtonCheckedListener { _, checkedId, isChecked ->
+                if (isChecked) {
+                    selectedMaxSyllables = when (checkedId) {
+                        R.id.btnSyllables2 -> 2
+                        R.id.btnSyllables3 -> 3
+                        R.id.btnSyllables4 -> 4
+                        else -> 0  // "Any" = no limit
+                    }
+                }
+            }
         }
 
         // Speech rate slider with dynamic label and value
@@ -297,6 +309,19 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
         binding.tvSpeedValue.text = String.format("%.1fx", rate)
     }
 
+    /**
+     * Update the max syllables toggle group selection.
+     */
+    private fun updateMaxSyllablesSelection(maxSyllables: Int) {
+        val buttonId = when (maxSyllables) {
+            2 -> R.id.btnSyllables2
+            3 -> R.id.btnSyllables3
+            4 -> R.id.btnSyllables4
+            else -> R.id.btnSyllablesAny  // 0 or any other = "Any"
+        }
+        binding.toggleMaxSyllables.check(buttonId)
+    }
+
     private fun saveSettings() {
         viewLifecycleOwner.lifecycleScope.launch {
             // Save parent settings to database (only in parent mode)
@@ -304,7 +329,7 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 val settings = ParentSettings(
                     dailyPointsTarget = binding.sliderDailyTarget.value.toInt(),
                     enableStreakBonuses = binding.switchStreakBonuses.isChecked,
-                    kidModeEnabled = binding.switchKidMode.isChecked,
+                    kidModeEnabled = ttsPreferences.getKidMode(),  // Preserve existing kid mode setting
                     lastModified = System.currentTimeMillis()
                 )
 
@@ -315,7 +340,7 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 // Save parent-only TTS preferences
                 ttsPreferences.saveCollaborativeMode(binding.switchCollaborative.isChecked)
                 ttsPreferences.saveAutoAdvance(binding.switchAutoAdvance.isChecked)
-                ttsPreferences.saveKidMode(binding.switchKidMode.isChecked)
+                ttsPreferences.saveMaxSyllables(selectedMaxSyllables)
             }
 
             // Save TTS preferences (always available - voice and speed)

@@ -114,6 +114,11 @@
     <color name="switch_thumb_coral">@color/secondary</color>
     <color name="switch_track_coral">#40FF6B6B</color>
 
+    <!-- Segmented Button Colors -->
+    <color name="segmented_selected_bg">#E0F7FA</color>
+    <color name="segmented_selected_stroke">#00BCD4</color>
+    <color name="segmented_unselected_stroke">#D0D5DD</color>
+
     <!-- Legacy Material Colors -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
