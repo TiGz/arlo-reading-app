@@ -98,8 +98,21 @@
     <color name="primary_burgundy">#00BCD4</color>
     <color name="secondary_gold">#FFD93D</color>
 
-    <!-- App Icon Background -->
-    <color name="ic_launcher_background">#50C8BE</color>
+    <!-- App Icon Background (matches figurine teal) -->
+    <color name="ic_launcher_background">#40E0D0</color>
+
+    <!-- Settings Modal Colors -->
+    <color name="settings_card_stroke">#E8ECF0</color>
+    <color name="slider_track_inactive">#E0E4E8</color>
+    <color name="slider_halo_yellow">#40FFD93D</color>
+    <color name="slider_halo_teal">#4000BCD4</color>
+    <color name="kid_mode_card_bg">#FFF5F5</color>
+
+    <!-- Switch Colors -->
+    <color name="switch_thumb_color">@color/primary</color>
+    <color name="switch_track_selector">#4000BCD4</color>
+    <color name="switch_thumb_coral">@color/secondary</color>
+    <color name="switch_track_coral">#40FF6B6B</color>
 
     <!-- Legacy Material Colors -->
     <color name="purple_200">#FFBB86FC</color>

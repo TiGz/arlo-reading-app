@@ -77,8 +77,9 @@ data class DailyStats(
     val totalPoints: Int = 0,            // All points including streak bonuses
 
     // Daily goal tracking
-    val dailyPointsTarget: Int = 100,    // Configurable by parent
+    val dailyPointsTarget: Int = 100,    // Configurable by parent (snapshot of target for this day)
     val goalMet: Boolean = false,        // True when totalPoints >= dailyPointsTarget
+    val goalMetFinal: Boolean? = null,   // Null = day in progress, true/false = permanently locked at day end
 
     val perfectWords: Int = 0,           // First-try correct in collaborative mode
     val totalCollaborativeAttempts: Int = 0,

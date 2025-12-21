@@ -16,7 +16,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             android:text="Reading Stats"
             android:textSize="24sp"
             android:textStyle="bold"
@@ -29,6 +29,353 @@
             android:layout_height="1dp"
             android:visibility="gone"
             android:contentDescription="Back" />
+
+        <!-- Period Selector Tabs -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="@color/surface_variant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="4dp">
+
+                <TextView
+                    android:id="@+id/tabToday"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Today"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/on_primary"
+                    android:background="@drawable/bg_tab_selected" />
+
+                <TextView
+                    android:id="@+id/tab7Days"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="7 Days"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:background="@android:color/transparent" />
+
+                <TextView
+                    android:id="@+id/tab30Days"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="30 Days"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:background="@android:color/transparent" />
+
+                <TextView
+                    android:id="@+id/tabAllTime"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="All Time"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary"
+                    android:background="@android:color/transparent" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 7-Day Calendar Strip (clickable days) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardWeekCalendar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:id="@+id/tvWeekLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Last 7 Days"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Day Circles -->
+                <LinearLayout
+                    android:id="@+id/weekDaysContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center">
+
+                    <!-- Day 1 -->
+                    <LinearLayout
+                        android:id="@+id/day1Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day1Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SUN"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day1Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="15"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Day 2 -->
+                    <LinearLayout
+                        android:id="@+id/day2Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day2Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="MON"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day2Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="16"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Day 3 -->
+                    <LinearLayout
+                        android:id="@+id/day3Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day3Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="TUE"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day3Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="17"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Day 4 -->
+                    <LinearLayout
+                        android:id="@+id/day4Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day4Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="WED"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day4Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="18"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Day 5 -->
+                    <LinearLayout
+                        android:id="@+id/day5Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day5Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="THU"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day5Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="19"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Day 6 -->
+                    <LinearLayout
+                        android:id="@+id/day6Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day6Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="FRI"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day6Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="20"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                    <!-- Day 7 (Today) -->
+                    <LinearLayout
+                        android:id="@+id/day7Container"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="4dp">
+
+                        <TextView
+                            android:id="@+id/day7Label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SAT"
+                            android:textSize="10sp"
+                            android:textColor="@color/text_hint" />
+
+                        <TextView
+                            android:id="@+id/day7Circle"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:gravity="center"
+                            android:text="21"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_secondary"
+                            android:background="@drawable/bg_day_inactive"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <!-- Week Goal Summary -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="8dp">
+
+                    <TextView
+                        android:id="@+id/tvWeeklyProgress"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="3 of 7 days goal met"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary" />
+
+                    <TextView
+                        android:id="@+id/tvWeeklyStreak"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Week 2 streak!"
+                        android:textSize="13sp"
+                        android:textColor="@color/accent_orange"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Star Summary Card -->
         <com.google.android.material.card.MaterialCardView
@@ -46,6 +393,16 @@
                 android:padding="20dp"
                 android:gravity="center">
 
+                <!-- Period Label -->
+                <TextView
+                    android:id="@+id/tvPeriodLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Today's Progress"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="4dp" />
+
                 <!-- Total Points Display -->
                 <TextView
                     android:id="@+id/tvTotalPoints"
@@ -59,7 +416,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Total Points"
+                    android:text="Points"
                     android:textSize="16sp"
                     android:textColor="@color/text_secondary"
                     android:layout_marginBottom="16dp" />
@@ -314,9 +671,10 @@
                         android:textColor="@color/text_primary" />
 
                     <TextView
+                        android:id="@+id/tvReadingTimeLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Total Reading Time"
+                        android:text="Reading Time"
                         android:textSize="14sp"
                         android:textColor="@color/text_secondary" />
 
@@ -340,9 +698,10 @@
                         android:id="@+id/tvTodayTime"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Today: 0 min"
+                        android:text=""
                         android:textSize="12sp"
-                        android:textColor="@color/text_secondary" />
+                        android:textColor="@color/text_secondary"
+                        android:visibility="gone" />
 
                 </LinearLayout>
 
@@ -447,145 +806,20 @@
 
         </LinearLayout>
 
-        <!-- Weekly Goal Section -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Weekly Goal"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary"
-            android:layout_marginBottom="12dp" />
+        <!-- Legacy day indicators (hidden, for compatibility) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone">
 
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="2dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="12dp">
-
-                    <TextView
-                        android:id="@+id/tvWeeklyProgress"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="0 of 5 days"
-                        android:textSize="16sp"
-                        android:textColor="@color/text_primary" />
-
-                    <TextView
-                        android:id="@+id/tvWeeklyStreak"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Week 0"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary" />
-
-                </LinearLayout>
-
-                <!-- Day indicators -->
-                <LinearLayout
-                    android:id="@+id/weekDaysContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center">
-
-                    <TextView
-                        android:id="@+id/dayMon"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="M"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                    <TextView
-                        android:id="@+id/dayTue"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="T"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                    <TextView
-                        android:id="@+id/dayWed"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="W"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                    <TextView
-                        android:id="@+id/dayThu"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="T"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                    <TextView
-                        android:id="@+id/dayFri"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="F"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                    <TextView
-                        android:id="@+id/daySat"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="S"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                    <TextView
-                        android:id="@+id/daySun"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:gravity="center"
-                        android:text="S"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:background="@drawable/bg_day_inactive"
-                        android:layout_margin="4dp" />
-
-                </LinearLayout>
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
+            <TextView android:id="@+id/dayMon" android:layout_width="0dp" android:layout_height="0dp" />
+            <TextView android:id="@+id/dayTue" android:layout_width="0dp" android:layout_height="0dp" />
+            <TextView android:id="@+id/dayWed" android:layout_width="0dp" android:layout_height="0dp" />
+            <TextView android:id="@+id/dayThu" android:layout_width="0dp" android:layout_height="0dp" />
+            <TextView android:id="@+id/dayFri" android:layout_width="0dp" android:layout_height="0dp" />
+            <TextView android:id="@+id/daySat" android:layout_width="0dp" android:layout_height="0dp" />
+            <TextView android:id="@+id/daySun" android:layout_width="0dp" android:layout_height="0dp" />
+        </LinearLayout>
 
     </LinearLayout>
 

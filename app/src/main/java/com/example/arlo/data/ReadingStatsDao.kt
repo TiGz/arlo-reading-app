@@ -23,6 +23,18 @@ interface ReadingStatsDao {
     @Query("SELECT * FROM daily_stats WHERE date BETWEEN :startDate AND :endDate ORDER BY date ASC")
     suspend fun getDailyStatsRange(startDate: String, endDate: String): List<DailyStats>
 
+    /**
+     * Finalize all past days that haven't been finalized yet.
+     * Sets goalMetFinal based on whether totalPoints >= dailyPointsTarget for that day.
+     * Only affects days before the specified date where goalMetFinal is still null.
+     */
+    @Query("""
+        UPDATE daily_stats
+        SET goalMetFinal = (totalPoints >= dailyPointsTarget)
+        WHERE date < :todayDate AND goalMetFinal IS NULL
+    """)
+    suspend fun finalizePastDays(todayDate: String)
+
     @Query("SELECT SUM(starsEarned) FROM daily_stats")
     fun observeTotalStars(): Flow<Int?>
 
@@ -201,6 +213,57 @@ interface ReadingStatsDao {
 
     @Query("SELECT SUM(totalPoints) FROM daily_stats")
     suspend fun getTotalPoints(): Int?
+
+    /**
+     * Get star breakdown for a date range (week/month).
+     */
+    @Query("""
+        SELECT
+            SUM(goldStars) as goldStars,
+            SUM(silverStars) as silverStars,
+            SUM(bronzeStars) as bronzeStars,
+            SUM(totalPoints) as totalPoints
+        FROM daily_stats
+        WHERE date BETWEEN :startDate AND :endDate
+    """)
+    suspend fun getPeriodStarBreakdown(startDate: String, endDate: String): StarBreakdownResult?
+
+    /**
+     * Get period stats (points, time, days active, stars) for a date range.
+     */
+    @Query("""
+        SELECT
+            SUM(totalPoints) as totalPoints,
+            SUM(activeReadingTimeMs) as totalActiveTimeMs,
+            COUNT(CASE WHEN totalPoints > 0 THEN 1 END) as daysWithActivity,
+            SUM(goldStars) as goldStars,
+            SUM(silverStars) as silverStars,
+            SUM(bronzeStars) as bronzeStars
+        FROM daily_stats
+        WHERE date BETWEEN :startDate AND :endDate
+    """)
+    suspend fun getPeriodSummary(startDate: String, endDate: String): WeeklySummaryResult?
+
+    /**
+     * Count days where goal was met in a date range.
+     * Uses goalMetFinal for finalized days, goalMet for today.
+     */
+    @Query("""
+        SELECT COUNT(*) FROM daily_stats
+        WHERE date BETWEEN :startDate AND :endDate
+        AND (goalMetFinal = 1 OR (goalMetFinal IS NULL AND goalMet = 1))
+    """)
+    suspend fun countGoalMetDays(startDate: String, endDate: String): Int
+
+    /**
+     * Get the last 7 days of stats for the week calendar view.
+     */
+    @Query("""
+        SELECT * FROM daily_stats
+        WHERE date >= :startDate AND date <= :endDate
+        ORDER BY date ASC
+    """)
+    suspend fun getLast7DaysStats(startDate: String, endDate: String): List<DailyStats>
 
     // ==================== STREAK STATE ====================
 

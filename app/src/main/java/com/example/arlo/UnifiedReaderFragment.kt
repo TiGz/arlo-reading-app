@@ -129,15 +129,9 @@ class UnifiedReaderFragment : Fragment() {
             showStatsDashboard()
         }
 
-        // Settings button shows voice/speed/auto-advance options
+        // Settings button opens the unified settings bottom sheet
         binding.btnSettings.setOnClickListener {
-            showSettingsMenu()
-        }
-
-        // Long-press settings button opens parent settings dialog
-        binding.btnSettings.setOnLongClickListener {
             showParentSettings()
-            true
         }
 
         // Score container also opens stats

@@ -88,10 +88,28 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
 
     /**
      * Get or create today's stats record.
+     * Also finalizes any unfinalzed past days.
      */
     suspend fun getTodayStats(): DailyStats {
         val today = todayString()
+        // Finalize any past days that weren't finalized
+        finalizePastDays(today)
         return dao.getDailyStats(today) ?: DailyStats(date = today)
+    }
+
+    /**
+     * Finalize all past days that haven't been finalized yet.
+     * This locks the goalMetFinal status permanently based on the day's own target.
+     */
+    private suspend fun finalizePastDays(todayDate: String) {
+        dao.finalizePastDays(todayDate)
+    }
+
+    /**
+     * Get stats for a specific date.
+     */
+    suspend fun getStatsForDate(date: String): DailyStats? {
+        return dao.getDailyStats(date)
     }
 
     /**
@@ -894,5 +912,139 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
      */
     suspend fun getRecentDailyStats(days: Int = 7): List<DailyStats> {
         return dao.getRecentDailyStats(days)
+    }
+
+    // ==================== PERIOD-BASED STATS FOR DASHBOARD ====================
+
+    /**
+     * Time periods for stats dashboard display.
+     */
+    enum class StatsPeriod {
+        TODAY, LAST_7_DAYS, LAST_30_DAYS, ALL_TIME
+    }
+
+    /**
+     * Container for all stats relevant to the dashboard for a given period.
+     */
+    data class PeriodStatsBundle(
+        val period: StatsPeriod,
+        val startDate: String,
+        val endDate: String,
+        val starBreakdown: StarBreakdownResult,
+        val totalReadingTimeMs: Long,
+        val daysWithActivity: Int,
+        val daysGoalMet: Int,
+        val bestStreak: Int,
+        val perfectWords: Int,
+        val sentencesRead: Int,
+        val pagesCompleted: Int
+    ) {
+        val totalStars: Int
+            get() = (starBreakdown.goldStars ?: 0) + (starBreakdown.silverStars ?: 0) + (starBreakdown.bronzeStars ?: 0)
+    }
+
+    /**
+     * Get the date range for a given stats period.
+     */
+    fun getDateRangeForPeriod(period: StatsPeriod): Pair<String, String> {
+        val today = todayString()
+        return when (period) {
+            StatsPeriod.TODAY -> today to today
+            StatsPeriod.LAST_7_DAYS -> {
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.DAY_OF_YEAR, -6)  // Today + 6 previous days = 7 days
+                DATE_FORMAT.format(cal.time) to today
+            }
+            StatsPeriod.LAST_30_DAYS -> {
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.DAY_OF_YEAR, -29)  // Today + 29 previous days = 30 days
+                DATE_FORMAT.format(cal.time) to today
+            }
+            StatsPeriod.ALL_TIME -> "2000-01-01" to today  // Effectively all time
+        }
+    }
+
+    /**
+     * Get comprehensive stats for a given time period.
+     */
+    suspend fun getStatsForPeriod(period: StatsPeriod): PeriodStatsBundle {
+        val (startDate, endDate) = getDateRangeForPeriod(period)
+
+        val starBreakdown: StarBreakdownResult = when (period) {
+            StatsPeriod.TODAY -> dao.getDayStarBreakdown(startDate)
+            StatsPeriod.ALL_TIME -> dao.getLifetimeStarBreakdown()
+            else -> dao.getPeriodStarBreakdown(startDate, endDate)
+        } ?: StarBreakdownResult(0, 0, 0, 0)
+
+        val summary = if (period == StatsPeriod.ALL_TIME) {
+            dao.getWeeklySummary("2000-01-01", endDate)
+        } else {
+            dao.getPeriodSummary(startDate, endDate)
+        } ?: WeeklySummaryResult(0, 0, 0, 0, 0, 0)
+
+        val periodStats = dao.getPeriodStats(startDate, endDate) ?: LifetimeStatsResult(0, 0, 0, 0, 0)
+
+        val daysGoalMet = dao.countGoalMetDays(startDate, endDate)
+
+        return PeriodStatsBundle(
+            period = period,
+            startDate = startDate,
+            endDate = endDate,
+            starBreakdown = starBreakdown,
+            totalReadingTimeMs = summary.totalActiveTimeMs ?: 0L,
+            daysWithActivity = summary.daysWithActivity ?: 0,
+            daysGoalMet = daysGoalMet,
+            bestStreak = periodStats.bestStreak ?: 0,
+            perfectWords = periodStats.totalPerfect ?: 0,
+            sentencesRead = periodStats.totalSentences ?: 0,
+            pagesCompleted = periodStats.totalPages ?: 0
+        )
+    }
+
+    /**
+     * Get the last 7 days of stats for the calendar view.
+     * Returns a list of 7 DailyRecordDisplay items (one per day, empty if no activity).
+     */
+    suspend fun getLast7DaysForCalendar(): List<DailyRecordDisplay> {
+        val today = todayString()
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_YEAR, -6)
+        val startDate = DATE_FORMAT.format(cal.time)
+
+        // Get actual data from DB
+        val dbStats = dao.getLast7DaysStats(startDate, today).associateBy { it.date }
+
+        // Build list of all 7 days
+        val result = mutableListOf<DailyRecordDisplay>()
+        cal.add(Calendar.DAY_OF_YEAR, -1)  // Reset to one day before start
+
+        for (i in 0 until 7) {
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+            val dateStr = DATE_FORMAT.format(cal.time)
+            val stats = dbStats[dateStr]
+
+            val dayOfWeek = cal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.US)?.uppercase() ?: "?"
+            val dayNumber = cal.get(Calendar.DAY_OF_MONTH)
+            val month = cal.getDisplayName(Calendar.MONTH, Calendar.SHORT, Locale.US)?.uppercase() ?: "?"
+
+            result.add(DailyRecordDisplay(
+                date = dateStr,
+                dayOfWeek = dayOfWeek,
+                dayNumber = dayNumber,
+                month = month,
+                goldStars = stats?.goldStars ?: 0,
+                silverStars = stats?.silverStars ?: 0,
+                bronzeStars = stats?.bronzeStars ?: 0,
+                totalPoints = stats?.totalPoints ?: 0,
+                readingTimeMinutes = ((stats?.activeReadingTimeMs ?: 0L) / 60000).toInt(),
+                goalMet = stats?.let {
+                    // Use finalized status if available, otherwise live status
+                    it.goalMetFinal ?: it.goalMet
+                } ?: false,
+                dailyPointsTarget = stats?.dailyPointsTarget ?: 100
+            ))
+        }
+
+        return result
     }
 }

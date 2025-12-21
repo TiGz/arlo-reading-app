@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./gradlew assembleDebug:*)"
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(./gradlew installDebug:*)",
+      "Skill(compound-engineering:frontend-design)",
+      "Skill(compound-engineering:frontend-design:*)"
     ]
   }
 }

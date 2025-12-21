@@ -23,7 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ParentSettings::class,
         ReadingSession::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(SentenceListConverter::class)
@@ -271,6 +271,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add goalMetFinal column to daily_stats for immutable historical goal tracking
+                // null = day in progress, true/false = permanently locked at day end
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN goalMetFinal INTEGER")
+
+                // Finalize all past days (not today) - lock their goal status based on what was recorded
+                // This uses the goalMet value that was calculated with the target at the time
+                db.execSQL("""
+                    UPDATE daily_stats
+                    SET goalMetFinal = goalMet
+                    WHERE date < date('now')
+                """)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -280,7 +296,8 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9
+                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                    MIGRATION_9_10
                 )
                 .fallbackToDestructiveMigration()
                 .build()

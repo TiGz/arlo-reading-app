@@ -5,24 +5,36 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.Window
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import androidx.fragment.app.DialogFragment
+import android.widget.FrameLayout
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.example.arlo.data.ParentSettings
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.databinding.DialogParentSettingsBinding
 import com.example.arlo.tts.TTSPreferences
 import com.example.arlo.tts.TTSService
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Dialog fragment for parent settings.
- * Triggered by long-press on settings button or 5-tap gesture.
+ * Bottom sheet dialog fragment for settings.
+ *
+ * In Kid Mode: Shows simplified "Settings" with only Voice & Speed options.
+ * In Parent Mode: Shows full "Parent Settings" with all options.
+ *
+ * Features a modern, playful design with:
+ * - Section icons with colored backgrounds
+ * - Custom sliders with emoji indicators
+ * - Material switches with enhanced touch targets
+ * - Prominent save button with coral accent
  */
-class ParentSettingsDialogFragment : DialogFragment() {
+class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
 
     private var _binding: DialogParentSettingsBinding? = null
     private val binding get() = _binding!!
@@ -32,10 +44,37 @@ class ParentSettingsDialogFragment : DialogFragment() {
     private lateinit var ttsService: TTSService
 
     private var availableVoices: List<TTSService.VoiceInfo> = emptyList()
+    private var isKidMode: Boolean = false
+    private var isInitialVoiceSelection: Boolean = true
+
+    companion object {
+        const val TAG = "ParentSettingsDialog"
+        private const val PREVIEW_SENTENCE = "Hello! I'm your reading voice."
+
+        fun newInstance() = ParentSettingsDialogFragment()
+    }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        val dialog = super.onCreateDialog(savedInstanceState)
-        dialog.window?.requestFeature(Window.FEATURE_NO_TITLE)
+        val dialog = super.onCreateDialog(savedInstanceState) as BottomSheetDialog
+
+        dialog.setOnShowListener { dialogInterface ->
+            val bottomSheet = (dialogInterface as BottomSheetDialog)
+                .findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+
+            bottomSheet?.let {
+                val behavior = BottomSheetBehavior.from(it)
+                // Set to expanded state by default
+                behavior.state = BottomSheetBehavior.STATE_EXPANDED
+                // Allow full expansion
+                behavior.skipCollapsed = true
+                // Set max height to 90% of screen
+                val maxHeight = (resources.displayMetrics.heightPixels * 0.9).toInt()
+                it.layoutParams.height = maxHeight
+                // Make background transparent for rounded corners
+                it.setBackgroundResource(android.R.color.transparent)
+            }
+        }
+
         return dialog
     }
 
@@ -56,28 +95,70 @@ class ParentSettingsDialogFragment : DialogFragment() {
         ttsPreferences = TTSPreferences(requireContext())
         ttsService = app.ttsService
 
+        // Check if we're in kid mode
+        isKidMode = ttsPreferences.getKidMode()
+
+        // Configure UI based on mode
+        configureForMode()
+
         loadSettings()
         setupListeners()
     }
 
+    /**
+     * Configure the UI based on whether we're in Kid Mode or Parent Mode.
+     */
+    private fun configureForMode() {
+        if (isKidMode) {
+            // Kid Mode: Simple "Settings" with only Voice & Speed
+            binding.tvSettingsTitle.text = "Settings"
+            binding.tvSettingsSubtitle.text = "Choose your reading voice"
+
+            // Hide parent-only sections
+            binding.sectionDailyGoalsHeader.isVisible = false
+            binding.cardDailyGoals.isVisible = false
+            binding.sectionReadingModesHeader.isVisible = false
+            binding.cardReadingModes.isVisible = false
+            binding.sectionInterfaceHeader.isVisible = false
+            binding.cardKidMode.isVisible = false
+        } else {
+            // Parent Mode: Full "Parent Settings" with all options
+            binding.tvSettingsTitle.text = "Parent Settings"
+            binding.tvSettingsSubtitle.text = "Customize your child's reading experience"
+
+            // Show all sections
+            binding.sectionDailyGoalsHeader.isVisible = true
+            binding.cardDailyGoals.isVisible = true
+            binding.sectionReadingModesHeader.isVisible = true
+            binding.cardReadingModes.isVisible = true
+            binding.sectionInterfaceHeader.isVisible = true
+            binding.cardKidMode.isVisible = true
+        }
+    }
+
     private fun loadSettings() {
         viewLifecycleOwner.lifecycleScope.launch {
-            // Load parent settings from database
-            val settings = withContext(Dispatchers.IO) {
-                statsRepository.getParentSettings()
+            // Load parent settings from database (only needed in parent mode)
+            if (!isKidMode) {
+                val settings = withContext(Dispatchers.IO) {
+                    statsRepository.getParentSettings()
+                }
+
+                // Set daily points target
+                binding.sliderDailyTarget.value = settings.dailyPointsTarget.toFloat()
+                binding.tvDailyTargetValue.text = settings.dailyPointsTarget.toString()
+
+                // Set toggles
+                binding.switchStreakBonuses.isChecked = settings.enableStreakBonuses
+                binding.switchKidMode.isChecked = settings.kidModeEnabled
+                binding.switchCollaborative.isChecked = ttsPreferences.getCollaborativeMode()
+                binding.switchAutoAdvance.isChecked = ttsPreferences.getAutoAdvance()
             }
 
-            // Set daily points target
-            binding.sliderDailyTarget.value = settings.dailyPointsTarget.toFloat()
-            binding.tvDailyTargetValue.text = settings.dailyPointsTarget.toString()
-
-            // Set toggles
-            binding.switchStreakBonuses.isChecked = settings.enableStreakBonuses
-            binding.switchKidMode.isChecked = settings.kidModeEnabled
-
-            // Load TTS preferences
-            binding.sliderSpeechRate.value = ttsPreferences.getSpeechRate()
-            binding.switchCollaborative.isChecked = ttsPreferences.getCollaborativeMode()
+            // Load TTS preferences (always available)
+            val speechRate = ttsPreferences.getSpeechRate()
+            binding.sliderSpeechRate.value = speechRate
+            updateSpeedLabel(speechRate)
 
             // Load available voices
             loadVoices()
@@ -113,39 +194,125 @@ class ParentSettingsDialogFragment : DialogFragment() {
         // Select current voice
         val currentVoice = ttsPreferences.getKokoroVoice()
         val selectedIndex = availableVoices.indexOfFirst { it.id == currentVoice }.takeIf { it >= 0 } ?: 0
+
+        // Reset flag before setting selection
+        isInitialVoiceSelection = true
         binding.spinnerVoice.setSelection(selectedIndex)
+
+        // Add listener for voice preview
+        binding.spinnerVoice.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // Skip preview on initial load
+                if (isInitialVoiceSelection) {
+                    isInitialVoiceSelection = false
+                    return
+                }
+
+                // Play preview with the selected voice
+                if (position >= 0 && position < availableVoices.size) {
+                    val selectedVoice = availableVoices[position]
+                    playVoicePreview(selectedVoice.id)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                // No action needed
+            }
+        }
+
+        // Pre-cache preview audio for all voices
+        cacheVoicePreviews()
+    }
+
+    /**
+     * Play a preview sentence with the specified voice.
+     */
+    private fun playVoicePreview(voiceId: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            ttsService.speakKokoroPreview(PREVIEW_SENTENCE, voiceId)
+        }
+    }
+
+    /**
+     * Pre-cache preview audio for all available voices in background.
+     */
+    private fun cacheVoicePreviews() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                availableVoices.forEach { voice ->
+                    try {
+                        // Pre-synthesize preview for each voice (this caches it internally)
+                        ttsService.synthesizeKokoroForCache(PREVIEW_SENTENCE, voice.id)
+                    } catch (e: Exception) {
+                        // Silently ignore cache failures - preview will still work, just slower
+                    }
+                }
+            }
+        }
     }
 
     private fun setupListeners() {
-        // Daily target slider
-        binding.sliderDailyTarget.addOnChangeListener { _, value, _ ->
-            binding.tvDailyTargetValue.text = value.toInt().toString()
+        // Daily target slider (only in parent mode)
+        if (!isKidMode) {
+            binding.sliderDailyTarget.addOnChangeListener { _, value, _ ->
+                binding.tvDailyTargetValue.text = value.toInt().toString()
+            }
+        }
+
+        // Speech rate slider with dynamic label and value
+        binding.sliderSpeechRate.addOnChangeListener { _, value, _ ->
+            updateSpeedLabel(value)
         }
 
         // Save button
         binding.btnSave.setOnClickListener {
             saveSettings()
         }
+
+        // Cancel button
+        binding.btnCancel.setOnClickListener {
+            dismiss()
+        }
+    }
+
+    /**
+     * Update the speed label and value based on the current speech rate.
+     */
+    private fun updateSpeedLabel(rate: Float) {
+        val label = when {
+            rate < 0.7f -> "Very Slow"
+            rate < 0.9f -> "Slow"
+            rate < 1.1f -> "Normal"
+            rate < 1.3f -> "Fast"
+            else -> "Very Fast"
+        }
+        binding.tvSpeedLabel.text = label
+        binding.tvSpeedValue.text = String.format("%.1fx", rate)
     }
 
     private fun saveSettings() {
         viewLifecycleOwner.lifecycleScope.launch {
-            // Save parent settings to database
-            val settings = ParentSettings(
-                dailyPointsTarget = binding.sliderDailyTarget.value.toInt(),
-                enableStreakBonuses = binding.switchStreakBonuses.isChecked,
-                kidModeEnabled = binding.switchKidMode.isChecked,
-                lastModified = System.currentTimeMillis()
-            )
+            // Save parent settings to database (only in parent mode)
+            if (!isKidMode) {
+                val settings = ParentSettings(
+                    dailyPointsTarget = binding.sliderDailyTarget.value.toInt(),
+                    enableStreakBonuses = binding.switchStreakBonuses.isChecked,
+                    kidModeEnabled = binding.switchKidMode.isChecked,
+                    lastModified = System.currentTimeMillis()
+                )
 
-            withContext(Dispatchers.IO) {
-                statsRepository.updateParentSettings(settings)
+                withContext(Dispatchers.IO) {
+                    statsRepository.updateParentSettings(settings)
+                }
+
+                // Save parent-only TTS preferences
+                ttsPreferences.saveCollaborativeMode(binding.switchCollaborative.isChecked)
+                ttsPreferences.saveAutoAdvance(binding.switchAutoAdvance.isChecked)
+                ttsPreferences.saveKidMode(binding.switchKidMode.isChecked)
             }
 
-            // Save TTS preferences
+            // Save TTS preferences (always available - voice and speed)
             ttsPreferences.saveSpeechRate(binding.sliderSpeechRate.value)
-            ttsPreferences.saveCollaborativeMode(binding.switchCollaborative.isChecked)
-            ttsPreferences.saveKidMode(binding.switchKidMode.isChecked)
 
             // Save selected voice
             val selectedPosition = binding.spinnerVoice.selectedItemPosition
@@ -158,23 +325,8 @@ class ParentSettingsDialogFragment : DialogFragment() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        // Set dialog to 90% of screen width
-        dialog?.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt(),
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
-    }
-
-    companion object {
-        const val TAG = "ParentSettingsDialog"
-
-        fun newInstance() = ParentSettingsDialogFragment()
     }
 }
