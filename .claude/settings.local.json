@@ -77,7 +77,9 @@
       "Bash(git push:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 2000)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell \"run-as com.example.arlo ls -la shared_prefs/\")",
-      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -b crash -d)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -b crash -d)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 50)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell \"run-as com.example.arlo ls -la files/tts_cache/ | head -20\")"
     ]
   }
 }

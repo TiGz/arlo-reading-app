@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Friendly speech bubble icon for audio loading state -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- Speech bubble body -->
+    <path
+        android:fillColor="#00BCD4"
+        android:pathData="M8,12 C8,6.48 12.48,2 18,2 L46,2 C51.52,2 56,6.48 56,12 L56,36 C56,41.52 51.52,46 46,46 L26,46 L16,56 L16,46 L18,46 C12.48,46 8,41.52 8,36 L8,12 Z" />
+
+    <!-- Inner highlight for depth -->
+    <path
+        android:fillColor="#4DD0E1"
+        android:pathData="M12,14 C12,10.13 15.13,7 19,7 L45,7 C48.87,7 52,10.13 52,14 L52,34 C52,37.87 48.87,41 45,41 L19,41 C15.13,41 12,37.87 12,34 L12,14 Z" />
+
+    <!-- Sound wave dot 1 (left) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,24 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+
+    <!-- Sound wave dot 2 (center) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,24 m-4,0 a4,4 0 1,1 8,0 a4,4 0 1,1 -8,0" />
+
+    <!-- Sound wave dot 3 (right) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,24 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+
+</vector>

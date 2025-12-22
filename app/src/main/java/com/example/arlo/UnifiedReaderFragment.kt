@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
@@ -62,10 +64,21 @@ class UnifiedReaderFragment : Fragment() {
     private lateinit var gameRewardsManager: GameRewardsManager
     private lateinit var raceCreditsManager: RaceCreditsManager
 
-    // Loading dot animations
-    private var dotAnimation1: Animation? = null
-    private var dotAnimation2: Animation? = null
-    private var dotAnimation3: Animation? = null
+    // Audio loading animations
+    private var speechBubbleAnimation: Animation? = null
+    private var soundBarAnimations: List<Animation>? = null
+    private var loadingMessageHandler: Handler? = null
+    private var loadingMessageIndex = 0
+    private val loadingMessages = listOf(
+        "Warming up my voice...",
+        "Getting ready to read!",
+        "Almost there...",
+        "Preparing the story..."
+    )
+
+    // Reading progress mode (page vs sentence)
+    enum class ReadingProgressMode { PAGE, SENTENCE }
+    private var currentProgressMode = ReadingProgressMode.PAGE
 
     // Permission launcher for RECORD_AUDIO
     private val requestAudioPermission = registerForActivityResult(
@@ -141,6 +154,11 @@ class UnifiedReaderFragment : Fragment() {
 
         binding.btnCollaborative.setOnClickListener {
             toggleCollaborativeMode()
+        }
+
+        // Reading progress bar tap to toggle between page and sentence mode
+        binding.readingProgressContainer.setOnClickListener {
+            toggleReadingProgressMode()
         }
 
         binding.btnVoice.setOnClickListener {
@@ -328,12 +346,8 @@ class UnifiedReaderFragment : Fragment() {
         }
         lastStreakCount = currentStreak
 
-        // Page indicator
-        if (state.totalPages > 0) {
-            binding.tvPageIndicator.text = "Page ${state.pageNumber} of ${state.totalPages}"
-        } else {
-            binding.tvPageIndicator.text = "No pages"
-        }
+        // Reading progress bar (replaces old page/sentence indicators)
+        updateReadingProgress(state)
 
         // Processing banner
         if (state.pendingPageCount > 0) {
@@ -424,14 +438,6 @@ class UnifiedReaderFragment : Fragment() {
 
         // Collaborative mode indicator
         updateCollaborativeIndicator(state)
-
-        // Sentence indicator
-        if (state.sentences.isNotEmpty()) {
-            binding.tvSentenceIndicator.text = "Sentence ${state.sentenceNumber} of ${state.totalSentences}"
-            binding.tvSentenceIndicator.visibility = View.VISIBLE
-        } else {
-            binding.tvSentenceIndicator.visibility = View.GONE
-        }
 
         // Navigation button states
         val canGoPrev = state.currentSentenceIndex > 0 || state.currentPageIndex > 0
@@ -581,39 +587,78 @@ class UnifiedReaderFragment : Fragment() {
     }
 
     /**
-     * Show or hide the audio loading indicator with gentle floating dot animations.
+     * Show or hide the audio loading indicator with vibrant speech bubble and sound wave animations.
+     * Designed to be obviously visible and engaging for children.
      */
     private fun updateAudioLoadingIndicator(isLoading: Boolean) {
         if (isLoading) {
             binding.audioLoadingIndicator.visibility = View.VISIBLE
 
-            // Start staggered floating animations for the dots
-            if (dotAnimation1 == null) {
-                dotAnimation1 = AnimationUtils.loadAnimation(requireContext(), R.anim.float_dots)
-                dotAnimation2 = AnimationUtils.loadAnimation(requireContext(), R.anim.float_dots).apply {
-                    startOffset = 150  // Stagger by 150ms
-                }
-                dotAnimation3 = AnimationUtils.loadAnimation(requireContext(), R.anim.float_dots).apply {
-                    startOffset = 300  // Stagger by 300ms
-                }
+            // Initialize animations if needed
+            if (speechBubbleAnimation == null) {
+                speechBubbleAnimation = AnimationUtils.loadAnimation(requireContext(), R.anim.bounce_speech_bubble)
+                soundBarAnimations = listOf(
+                    AnimationUtils.loadAnimation(requireContext(), R.anim.sound_wave_bar_1),
+                    AnimationUtils.loadAnimation(requireContext(), R.anim.sound_wave_bar_2),
+                    AnimationUtils.loadAnimation(requireContext(), R.anim.sound_wave_bar_3),
+                    AnimationUtils.loadAnimation(requireContext(), R.anim.sound_wave_bar_4),
+                    AnimationUtils.loadAnimation(requireContext(), R.anim.sound_wave_bar_5)
+                )
             }
 
-            binding.loadingDot1.startAnimation(dotAnimation1)
-            binding.loadingDot2.startAnimation(dotAnimation2)
-            binding.loadingDot3.startAnimation(dotAnimation3)
+            // Start speech bubble bounce animation
+            binding.ivSpeechBubble.startAnimation(speechBubbleAnimation)
 
-            // Pulse the container
-            val pulseAnimation = AnimationUtils.loadAnimation(requireContext(), R.anim.pulse_gentle)
-            binding.audioLoadingIndicator.startAnimation(pulseAnimation)
+            // Start sound wave bar animations
+            soundBarAnimations?.let { animations ->
+                binding.soundBar1.startAnimation(animations[0])
+                binding.soundBar2.startAnimation(animations[1])
+                binding.soundBar3.startAnimation(animations[2])
+                binding.soundBar4.startAnimation(animations[3])
+                binding.soundBar5.startAnimation(animations[4])
+            }
+
+            // Start cycling through friendly messages
+            loadingMessageIndex = 0
+            binding.tvLoadingMessage.text = loadingMessages[loadingMessageIndex]
+            loadingMessageHandler = Handler(Looper.getMainLooper())
+            cycleLoadingMessage()
+
         } else {
             binding.audioLoadingIndicator.visibility = View.GONE
 
-            // Stop animations
-            binding.loadingDot1.clearAnimation()
-            binding.loadingDot2.clearAnimation()
-            binding.loadingDot3.clearAnimation()
+            // Stop all animations
+            binding.ivSpeechBubble.clearAnimation()
+            binding.soundBar1.clearAnimation()
+            binding.soundBar2.clearAnimation()
+            binding.soundBar3.clearAnimation()
+            binding.soundBar4.clearAnimation()
+            binding.soundBar5.clearAnimation()
             binding.audioLoadingIndicator.clearAnimation()
+
+            // Stop message cycling
+            loadingMessageHandler?.removeCallbacksAndMessages(null)
+            loadingMessageHandler = null
         }
+    }
+
+    /**
+     * Cycle through friendly loading messages every 2 seconds.
+     */
+    private fun cycleLoadingMessage() {
+        loadingMessageHandler?.postDelayed({
+            if (_binding != null && binding.audioLoadingIndicator.visibility == View.VISIBLE) {
+                loadingMessageIndex = (loadingMessageIndex + 1) % loadingMessages.size
+
+                // Animate the text change
+                val fadeAnim = AnimationUtils.loadAnimation(requireContext(), R.anim.text_fade_cycle)
+                binding.tvLoadingMessage.startAnimation(fadeAnim)
+                binding.tvLoadingMessage.text = loadingMessages[loadingMessageIndex]
+
+                // Continue cycling
+                cycleLoadingMessage()
+            }
+        }, 2000)
     }
 
     override fun onResume() {
@@ -735,6 +780,47 @@ class UnifiedReaderFragment : Fragment() {
         viewModel.stopReading()
         viewModel.cancelSpeechRecognition()
         _binding = null
+    }
+
+    private fun toggleReadingProgressMode() {
+        currentProgressMode = when (currentProgressMode) {
+            ReadingProgressMode.PAGE -> ReadingProgressMode.SENTENCE
+            ReadingProgressMode.SENTENCE -> ReadingProgressMode.PAGE
+        }
+
+        // Animate the toggle
+        val anim = AnimationUtils.loadAnimation(requireContext(), R.anim.progress_toggle)
+        binding.readingProgressContainer.startAnimation(anim)
+
+        // Update UI
+        updateReadingProgress(viewModel.state.value)
+    }
+
+    private fun updateReadingProgress(state: UnifiedReaderViewModel.ReaderState) {
+        when (currentProgressMode) {
+            ReadingProgressMode.PAGE -> {
+                binding.dotPageMode.setBackgroundResource(R.drawable.bg_mode_dot_teal)
+                binding.dotSentenceMode.setBackgroundResource(R.drawable.bg_mode_dot_inactive)
+                binding.tvProgressModeLabel.text = "PAGE"
+                binding.tvProgressModeLabel.setTextColor(ContextCompat.getColor(requireContext(), R.color.primary_dark))
+                binding.readingProgressBar.max = state.totalPages.coerceAtLeast(1)
+                binding.readingProgressBar.progress = state.pageNumber
+                binding.tvProgressNumeric.text = "${state.pageNumber} / ${state.totalPages}"
+                binding.readingProgressBar.progressDrawable =
+                    ContextCompat.getDrawable(requireContext(), R.drawable.bg_reading_progress_teal)
+            }
+            ReadingProgressMode.SENTENCE -> {
+                binding.dotPageMode.setBackgroundResource(R.drawable.bg_mode_dot_inactive)
+                binding.dotSentenceMode.setBackgroundResource(R.drawable.bg_mode_dot_purple)
+                binding.tvProgressModeLabel.text = "SENTENCE"
+                binding.tvProgressModeLabel.setTextColor(ContextCompat.getColor(requireContext(), R.color.accent_purple))
+                binding.readingProgressBar.max = state.totalSentences.coerceAtLeast(1)
+                binding.readingProgressBar.progress = state.sentenceNumber
+                binding.tvProgressNumeric.text = "${state.sentenceNumber} / ${state.totalSentences}"
+                binding.readingProgressBar.progressDrawable =
+                    ContextCompat.getDrawable(requireContext(), R.drawable.bg_reading_progress_purple)
+            }
+        }
     }
 
     private fun toggleCollaborativeMode() {

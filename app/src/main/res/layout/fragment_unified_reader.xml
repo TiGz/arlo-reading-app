@@ -272,17 +272,101 @@
 
         </LinearLayout>
 
-        <!-- Row 2: Daily Progress Bar with target marker -->
+        <!-- Row 2: Toggleable Reading Progress Bar -->
+        <FrameLayout
+            android:id="@+id/readingProgressContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_progress_bar_container"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- Mode dots (vertical pair) -->
+                <LinearLayout
+                    android:id="@+id/modeDotsContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="10dp"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <View
+                        android:id="@+id/dotPageMode"
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:background="@drawable/bg_mode_dot_teal" />
+
+                    <Space
+                        android:layout_width="3dp"
+                        android:layout_height="3dp" />
+
+                    <View
+                        android:id="@+id/dotSentenceMode"
+                        android:layout_width="6dp"
+                        android:layout_height="6dp"
+                        android:background="@drawable/bg_mode_dot_inactive" />
+
+                </LinearLayout>
+
+                <!-- Mode label -->
+                <TextView
+                    android:id="@+id/tvProgressModeLabel"
+                    android:layout_width="55dp"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="PAGE"
+                    android:textAllCaps="true"
+                    android:textColor="@color/primary_dark"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <!-- Progress bar -->
+                <ProgressBar
+                    android:id="@+id/readingProgressBar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="10dp"
+                    android:layout_weight="1"
+                    android:max="100"
+                    android:progress="25"
+                    android:progressDrawable="@drawable/bg_reading_progress_teal" />
+
+                <!-- Numeric label -->
+                <TextView
+                    android:id="@+id/tvProgressNumeric"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    tools:text="3 / 12" />
+
+            </LinearLayout>
+
+        </FrameLayout>
+
+        <!-- Row 3: Daily Progress Bar + Add Page Button -->
         <LinearLayout
             android:id="@+id/dailyProgressContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="56dp"
-            android:paddingTop="6dp">
+            android:paddingStart="56dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="16dp">
 
-            <!-- Progress bar container with target marker overlay -->
+            <!-- Daily progress bar with target marker -->
             <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -292,7 +376,7 @@
                     android:id="@+id/dailyProgressBar"
                     style="@android:style/Widget.ProgressBar.Horizontal"
                     android:layout_width="match_parent"
-                    android:layout_height="8dp"
+                    android:layout_height="6dp"
                     android:max="100"
                     android:progress="60"
                     android:progressDrawable="@drawable/bg_daily_progress" />
@@ -301,7 +385,7 @@
                 <View
                     android:id="@+id/targetMarker"
                     android:layout_width="3dp"
-                    android:layout_height="12dp"
+                    android:layout_height="10dp"
                     android:layout_gravity="center_vertical"
                     android:layout_marginTop="-2dp"
                     android:background="@color/success"
@@ -317,88 +401,30 @@
                 android:layout_marginStart="8dp"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="@color/text_secondary"
-                android:textSize="11sp"
-                tools:text="60/100 pts" />
+                android:textSize="10sp"
+                tools:text="65/100 pts" />
+
+            <!-- Add page button -->
+            <ImageButton
+                android:id="@+id/btnAddPage"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Add new page"
+                android:padding="8dp"
+                android:src="@drawable/ic_camera"
+                android:tooltipText="Capture new page"
+                app:tint="@color/primary" />
 
         </LinearLayout>
 
-        <!-- Row 3: Page/Sentence info + Quick controls -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="56dp"
-            android:paddingTop="2dp">
-
-            <!-- Page and sentence indicators -->
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/tvPageIndicator"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif"
-                    android:textColor="@color/primary"
-                    android:textSize="12sp"
-                    tools:text="Page 3 of 12" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="6dp"
-                    android:text="·"
-                    android:textColor="@color/text_hint"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/tvSentenceIndicator"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp"
-                    tools:text="Sentence 3 of 7" />
-
-            </LinearLayout>
-
-            <!-- Quick action buttons (compact) -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <!-- Collaborative mode toggle - Purple accent -->
-                <ImageButton
-                    android:id="@+id/btnCollaborative"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Toggle collaborative reading"
-                    android:padding="8dp"
-                    android:src="@drawable/ic_mic"
-                    android:tooltipText="Collaborative reading: OFF"
-                    app:tint="@color/accent_purple" />
-
-                <!-- Add page button -->
-                <ImageButton
-                    android:id="@+id/btnAddPage"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Add new page"
-                    android:padding="8dp"
-                    android:src="@drawable/ic_camera"
-                    android:tooltipText="Capture new page"
-                    app:tint="@color/primary" />
-
-            </LinearLayout>
-
-        </LinearLayout>
+        <!-- Hidden collaborative button (moved to parent settings) -->
+        <ImageButton
+            android:id="@+id/btnCollaborative"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
 
     </LinearLayout>
 
@@ -492,17 +518,18 @@
 
     </ScrollView>
 
-    <!-- Audio Loading Indicator - Gentle breathing animation -->
+    <!-- Audio Loading Indicator - Vibrant "Warming Up Voice" Animation -->
     <LinearLayout
         android:id="@+id/audioLoadingIndicator"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="32dp"
-        android:background="@drawable/bg_loading_bubble"
+        android:layout_marginHorizontal="24dp"
+        android:background="@drawable/bg_audio_loading_card"
+        android:elevation="8dp"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingHorizontal="32dp"
-        android:paddingVertical="24dp"
+        android:paddingHorizontal="28dp"
+        android:paddingVertical="28dp"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/collaborativeFeedbackSpace"
         app:layout_constraintEnd_toEndOf="parent"
@@ -510,45 +537,82 @@
         app:layout_constraintTop_toBottomOf="@id/processingBanner"
         tools:visibility="visible">
 
-        <!-- Floating dots container -->
+        <!-- Speech bubble icon with bounce -->
+        <ImageView
+            android:id="@+id/ivSpeechBubble"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:src="@drawable/ic_speech_bubble"
+            android:contentDescription="Voice loading" />
+
+        <!-- Sound Wave Equalizer Bars -->
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="16dp"
             android:gravity="center"
             android:orientation="horizontal">
 
             <View
-                android:id="@+id/loadingDot1"
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:background="@drawable/loading_dot" />
+                android:id="@+id/soundBar1"
+                android:layout_width="8dp"
+                android:layout_height="24dp"
+                android:background="@drawable/sound_wave_bar" />
 
             <View
-                android:id="@+id/loadingDot2"
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:layout_marginStart="12dp"
-                android:background="@drawable/loading_dot" />
+                android:id="@+id/soundBar2"
+                android:layout_width="8dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/sound_wave_bar" />
 
             <View
-                android:id="@+id/loadingDot3"
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:layout_marginStart="12dp"
-                android:background="@drawable/loading_dot" />
+                android:id="@+id/soundBar3"
+                android:layout_width="8dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/sound_wave_bar" />
+
+            <View
+                android:id="@+id/soundBar4"
+                android:layout_width="8dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/sound_wave_bar" />
+
+            <View
+                android:id="@+id/soundBar5"
+                android:layout_width="8dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/sound_wave_bar" />
 
         </LinearLayout>
 
-        <!-- Friendly message -->
+        <!-- Friendly rotating message -->
         <TextView
             android:id="@+id/tvLoadingMessage"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:fontFamily="sans-serif-medium"
-            android:text="Getting the voice ready..."
-            android:textColor="@color/primary"
-            android:textSize="16sp" />
+            android:gravity="center"
+            android:text="Warming up my voice..."
+            android:textColor="@color/primary_dark"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- Reassuring sub-message -->
+        <TextView
+            android:id="@+id/tvLoadingSubMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="sans-serif"
+            android:gravity="center"
+            android:text="Almost ready to read!"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
 
     </LinearLayout>
 
