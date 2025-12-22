@@ -1050,6 +1050,155 @@
 
                         </LinearLayout>
 
+                        <!-- Divider -->
+                        <View
+                            android:id="@+id/dividerMilestones"
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginHorizontal="16dp"
+                            android:background="@color/divider" />
+
+                        <!-- Milestone Rewards Expandable Section -->
+                        <LinearLayout
+                            android:id="@+id/layoutMilestoneRewards"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="16dp"
+                            android:background="@drawable/bg_toggle_item_bottom">
+
+                            <!-- Expandable Header -->
+                            <LinearLayout
+                                android:id="@+id/headerMilestoneRewards"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical">
+
+                                <LinearLayout
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="Milestone Rewards"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold"
+                                        android:textColor="@color/text_primary" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginTop="4dp"
+                                        android:text="Customize rewards for different achievements"
+                                        android:textSize="13sp"
+                                        android:textColor="@color/text_secondary" />
+
+                                </LinearLayout>
+
+                                <ImageView
+                                    android:id="@+id/ivMilestoneExpand"
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    android:src="@drawable/ic_chevron_down"
+                                    app:tint="@color/text_secondary" />
+
+                            </LinearLayout>
+
+                            <!-- Expandable Content (Hidden by default) -->
+                            <LinearLayout
+                                android:id="@+id/layoutMilestoneContent"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:visibility="gone"
+                                android:layout_marginTop="20dp">
+
+                                <!-- Daily Goal Races Slider -->
+                                <include
+                                    android:id="@+id/sliderDailyGoalRaces"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content" />
+
+                                <!-- Points Multiple Races Slider -->
+                                <include
+                                    android:id="@+id/sliderMultipleRaces"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="16dp" />
+
+                                <!-- Streak Threshold Slider -->
+                                <include
+                                    android:id="@+id/sliderStreakThreshold"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="16dp" />
+
+                                <!-- Streak Races Slider -->
+                                <include
+                                    android:id="@+id/sliderStreakRaces"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="16dp" />
+
+                                <!-- Section Divider -->
+                                <View
+                                    android:layout_width="match_parent"
+                                    android:layout_height="1dp"
+                                    android:layout_marginVertical="20dp"
+                                    android:background="@color/divider" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Completion Rewards"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/text_secondary"
+                                    android:layout_marginBottom="12dp" />
+
+                                <!-- Page Completion Races Slider -->
+                                <include
+                                    android:id="@+id/sliderPageRaces"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content" />
+
+                                <!-- Chapter Completion Races Slider -->
+                                <include
+                                    android:id="@+id/sliderChapterRaces"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="16dp" />
+
+                                <!-- Book Completion Races Slider -->
+                                <include
+                                    android:id="@+id/sliderBookRaces"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="16dp" />
+
+                                <!-- Completion Threshold Slider -->
+                                <include
+                                    android:id="@+id/sliderCompletionThreshold"
+                                    layout="@layout/item_milestone_slider"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="16dp" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+
                     </LinearLayout>
 
                 </com.google.android.material.card.MaterialCardView>

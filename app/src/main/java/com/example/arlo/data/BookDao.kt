@@ -110,4 +110,65 @@ interface BookDao {
 
     @Query("UPDATE pages SET imagePath = :imagePath WHERE id = :pageId")
     suspend fun updatePageImage(pageId: Long, imagePath: String)
+
+    // ==================== CHAPTER INFERENCE ====================
+
+    /**
+     * Get all pages before a given page (for backward chapter inference).
+     */
+    @Query("""
+        SELECT * FROM pages
+        WHERE bookId = :bookId AND pageNumber < (SELECT pageNumber FROM pages WHERE id = :pageId)
+        ORDER BY pageNumber DESC
+    """)
+    suspend fun getPagesBeforePage(bookId: Long, pageId: Long): List<Page>
+
+    /**
+     * Update page with OCR result including resolved chapter.
+     */
+    @Query("""
+        UPDATE pages SET
+            text = :text,
+            sentencesJson = :json,
+            lastSentenceComplete = :complete,
+            detectedPageLabel = :pageLabel,
+            chapterTitle = :chapterTitle,
+            resolvedChapter = :resolvedChapter,
+            confidence = :confidence,
+            processingStatus = 'COMPLETED'
+        WHERE id = :pageId
+    """)
+    suspend fun updatePageWithOCRResultAndChapter(
+        pageId: Long,
+        text: String,
+        json: String,
+        complete: Boolean,
+        pageLabel: String? = null,
+        chapterTitle: String? = null,
+        resolvedChapter: String? = null,
+        confidence: Float = 1.0f
+    )
+
+    /**
+     * Get all distinct chapters in a book (from resolvedChapter field), in page order.
+     */
+    @Query("""
+        SELECT resolvedChapter
+        FROM pages
+        WHERE bookId = :bookId AND resolvedChapter IS NOT NULL
+        GROUP BY resolvedChapter
+        ORDER BY MIN(pageNumber)
+    """)
+    suspend fun getChaptersForBook(bookId: Long): List<String>
+
+    /**
+     * Get the page that marks the start of a chapter.
+     */
+    @Query("""
+        SELECT * FROM pages
+        WHERE bookId = :bookId AND chapterTitle = :chapterTitle
+        ORDER BY pageNumber ASC
+        LIMIT 1
+    """)
+    suspend fun getChapterStartPage(bookId: Long, chapterTitle: String): Page?
 }

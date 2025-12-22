@@ -1,5 +1,6 @@
 package com.example.arlo
 
+import android.animation.ObjectAnimator
 import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -13,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.arlo.data.ParentSettings
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.databinding.DialogParentSettingsBinding
+import com.example.arlo.databinding.ItemMilestoneSliderBinding
 import com.example.arlo.tts.TTSPreferences
 import com.example.arlo.tts.TTSService
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -47,6 +49,17 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
     private var isKidMode: Boolean = false
     private var isInitialVoiceSelection: Boolean = true
     private var selectedMaxSyllables: Int = 0  // 0 = Any (no limit)
+    private var isMilestoneExpanded: Boolean = false
+
+    // Milestone slider bindings
+    private lateinit var dailyGoalRacesBinding: ItemMilestoneSliderBinding
+    private lateinit var multipleRacesBinding: ItemMilestoneSliderBinding
+    private lateinit var streakThresholdBinding: ItemMilestoneSliderBinding
+    private lateinit var streakRacesBinding: ItemMilestoneSliderBinding
+    private lateinit var pageRacesBinding: ItemMilestoneSliderBinding
+    private lateinit var chapterRacesBinding: ItemMilestoneSliderBinding
+    private lateinit var bookRacesBinding: ItemMilestoneSliderBinding
+    private lateinit var completionThresholdBinding: ItemMilestoneSliderBinding
 
     companion object {
         const val TAG = "ParentSettingsDialog"
@@ -168,6 +181,9 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 binding.sliderMaxRaces.value = settings.maxRacesPerDay.toFloat()
                 binding.tvMaxRacesValue.text = settings.maxRacesPerDay.toString()
                 updateMaxRacesVisibility(settings.gameRewardsEnabled)
+
+                // Initialize milestone slider bindings
+                initMilestoneSliders(settings)
             }
 
             // Load TTS preferences (always available)
@@ -177,6 +193,116 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
 
             // Load available voices
             loadVoices()
+        }
+    }
+
+    private fun initMilestoneSliders(settings: ParentSettings) {
+        // Bind included layouts
+        dailyGoalRacesBinding = ItemMilestoneSliderBinding.bind(binding.sliderDailyGoalRaces.root)
+        multipleRacesBinding = ItemMilestoneSliderBinding.bind(binding.sliderMultipleRaces.root)
+        streakThresholdBinding = ItemMilestoneSliderBinding.bind(binding.sliderStreakThreshold.root)
+        streakRacesBinding = ItemMilestoneSliderBinding.bind(binding.sliderStreakRaces.root)
+        pageRacesBinding = ItemMilestoneSliderBinding.bind(binding.sliderPageRaces.root)
+        chapterRacesBinding = ItemMilestoneSliderBinding.bind(binding.sliderChapterRaces.root)
+        bookRacesBinding = ItemMilestoneSliderBinding.bind(binding.sliderBookRaces.root)
+        completionThresholdBinding = ItemMilestoneSliderBinding.bind(binding.sliderCompletionThreshold.root)
+
+        // Configure each slider
+        setupMilestoneSlider(
+            dailyGoalRacesBinding,
+            "Daily Goal Races",
+            "Races when reaching daily point goal",
+            settings.racesForDailyTarget,
+            0f, 5f, "races"
+        )
+
+        setupMilestoneSlider(
+            multipleRacesBinding,
+            "Points Multiple Bonus",
+            "Races per 2x, 3x, etc. of daily goal",
+            settings.racesPerMultiple,
+            0f, 5f, "races"
+        )
+
+        setupMilestoneSlider(
+            streakThresholdBinding,
+            "Streak Threshold",
+            "Correct answers in a row for bonus",
+            settings.streakThreshold,
+            3f, 20f, ""
+        )
+
+        setupMilestoneSlider(
+            streakRacesBinding,
+            "Streak Races",
+            "Races earned per streak milestone",
+            settings.racesPerStreakAchievement,
+            0f, 5f, "races"
+        )
+
+        setupMilestoneSlider(
+            pageRacesBinding,
+            "Page Completion",
+            "Races when finishing a page",
+            settings.racesPerPageCompletion,
+            0f, 5f, "races"
+        )
+
+        setupMilestoneSlider(
+            chapterRacesBinding,
+            "Chapter Completion",
+            "Races when finishing a chapter",
+            settings.racesPerChapterCompletion,
+            0f, 5f, "races"
+        )
+
+        setupMilestoneSlider(
+            bookRacesBinding,
+            "Book Completion",
+            "Races when finishing a book",
+            settings.racesPerBookCompletion,
+            0f, 5f, "races"
+        )
+
+        // Completion threshold uses percentage (50-100%)
+        setupCompletionThresholdSlider(settings.completionThreshold)
+    }
+
+    private fun setupMilestoneSlider(
+        sliderBinding: ItemMilestoneSliderBinding,
+        title: String,
+        description: String,
+        initialValue: Int,
+        minValue: Float,
+        maxValue: Float,
+        unit: String
+    ) {
+        sliderBinding.tvMilestoneTitle.text = title
+        sliderBinding.tvMilestoneDescription.text = description
+        sliderBinding.tvMilestoneUnit.text = unit
+        sliderBinding.sliderMilestone.valueFrom = minValue
+        sliderBinding.sliderMilestone.valueTo = maxValue
+        sliderBinding.sliderMilestone.value = initialValue.toFloat().coerceIn(minValue, maxValue)
+        sliderBinding.tvMilestoneValue.text = initialValue.toString()
+
+        sliderBinding.sliderMilestone.addOnChangeListener { _, value, _ ->
+            sliderBinding.tvMilestoneValue.text = value.toInt().toString()
+        }
+    }
+
+    private fun setupCompletionThresholdSlider(initialValue: Float) {
+        completionThresholdBinding.tvMilestoneTitle.text = "Completion Threshold"
+        completionThresholdBinding.tvMilestoneDescription.text = "Minimum % to earn completion rewards"
+        completionThresholdBinding.tvMilestoneUnit.text = "%"
+        completionThresholdBinding.sliderMilestone.valueFrom = 50f
+        completionThresholdBinding.sliderMilestone.valueTo = 100f
+        completionThresholdBinding.sliderMilestone.stepSize = 5f
+        val percentValue = (initialValue * 100).toInt()
+        completionThresholdBinding.sliderMilestone.value = percentValue.toFloat().coerceIn(50f, 100f)
+        completionThresholdBinding.tvMilestoneValue.text = percentValue.toString()
+
+        completionThresholdBinding.sliderMilestone.addOnChangeListener { _, value, _ ->
+            completionThresholdBinding.tvMilestoneValue.text = value.toInt().toString()
         }
     }
 
@@ -291,6 +417,11 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.sliderMaxRaces.addOnChangeListener { _, value, _ ->
                 binding.tvMaxRacesValue.text = value.toInt().toString()
             }
+
+            // Milestone rewards expand/collapse
+            binding.headerMilestoneRewards.setOnClickListener {
+                toggleMilestoneSection()
+            }
         }
 
         // Speech rate slider with dynamic label and value
@@ -348,6 +479,28 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
     private fun updateMaxRacesVisibility(enabled: Boolean) {
         binding.layoutMaxRaces.alpha = if (enabled) 1.0f else 0.5f
         binding.sliderMaxRaces.isEnabled = enabled
+
+        // Also control milestone section visibility
+        binding.dividerMilestones.alpha = if (enabled) 1.0f else 0.5f
+        binding.layoutMilestoneRewards.alpha = if (enabled) 1.0f else 0.5f
+        binding.headerMilestoneRewards.isClickable = enabled
+    }
+
+    /**
+     * Toggle the milestone rewards expandable section.
+     */
+    private fun toggleMilestoneSection() {
+        isMilestoneExpanded = !isMilestoneExpanded
+
+        // Animate chevron rotation
+        val rotation = if (isMilestoneExpanded) 180f else 0f
+        ObjectAnimator.ofFloat(binding.ivMilestoneExpand, "rotation", rotation).apply {
+            duration = 200
+            start()
+        }
+
+        // Show/hide content
+        binding.layoutMilestoneContent.isVisible = isMilestoneExpanded
     }
 
     private fun saveSettings() {
@@ -360,6 +513,15 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                     kidModeEnabled = ttsPreferences.getKidMode(),  // Preserve existing kid mode setting
                     gameRewardsEnabled = binding.switchGameRewards.isChecked,
                     maxRacesPerDay = binding.sliderMaxRaces.value.toInt(),
+                    // Milestone settings
+                    racesForDailyTarget = dailyGoalRacesBinding.sliderMilestone.value.toInt(),
+                    racesPerMultiple = multipleRacesBinding.sliderMilestone.value.toInt(),
+                    streakThreshold = streakThresholdBinding.sliderMilestone.value.toInt(),
+                    racesPerStreakAchievement = streakRacesBinding.sliderMilestone.value.toInt(),
+                    racesPerPageCompletion = pageRacesBinding.sliderMilestone.value.toInt(),
+                    racesPerChapterCompletion = chapterRacesBinding.sliderMilestone.value.toInt(),
+                    racesPerBookCompletion = bookRacesBinding.sliderMilestone.value.toInt(),
+                    completionThreshold = completionThresholdBinding.sliderMilestone.value / 100f,
                     lastModified = System.currentTimeMillis()
                 )
 

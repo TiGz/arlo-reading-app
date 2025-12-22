@@ -14,11 +14,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.arlo.data.Book
 import com.example.arlo.data.DailyStats
+import com.example.arlo.data.EarnedMilestone
 import com.example.arlo.data.Page
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.data.SentenceData
 import com.example.arlo.data.SessionStats
 import com.example.arlo.data.StarType
+import com.example.arlo.games.MilestoneRewardsService
 import com.example.arlo.tts.TTSPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,6 +47,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     private val repository = (application as ArloApplication).repository
     private val statsRepository = (application as ArloApplication).statsRepository
+    private val milestoneService = (application as ArloApplication).milestoneRewardsService
     val ttsService = (application as ArloApplication).ttsService
     private val ttsCacheManager = (application as ArloApplication).ttsCacheManager
     private val ttsPreferences = TTSPreferences(application)
@@ -127,7 +130,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val chapterTitle: String? = null,  // Current chapter title if available
         // Today's cumulative stats (persisted across app restarts)
         val todayStats: DailyStats? = null,
-        val dailyPointsTarget: Int = 100  // Parent-configurable daily goal
+        val dailyPointsTarget: Int = 100,  // Parent-configurable daily goal
+        // Milestone rewards
+        val recentMilestones: List<EarnedMilestone> = emptyList(),  // Recently earned milestones for toast display
+        val missedStarsCount: Int = 0  // Count of missed stars in current book
     ) {
         val currentPage: Page? get() = pages.getOrNull(currentPageIndex)
         val currentSentence: SentenceData? get() = sentences.getOrNull(currentSentenceIndex)
@@ -216,6 +222,17 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
             // Load total stars and observe stats
             loadAndObserveStats()
+
+            // Observe missed stars count for this book
+            observeMissedStarsCount()
+        }
+    }
+
+    private fun observeMissedStarsCount() {
+        viewModelScope.launch {
+            statsRepository.observeMissedStarsCount(bookId).collect { count ->
+                _state.value = _state.value.copy(missedStarsCount = count)
+            }
         }
     }
 
@@ -354,7 +371,8 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             ttsHasPronouncedTargetWord = false,  // Reset for new word
             attemptCount = 0,
             lastAttemptSuccess = null,
-            collaborativeState = CollaborativeState.IDLE
+            collaborativeState = CollaborativeState.IDLE,
+            chapterTitle = page.resolvedChapter  // Track current chapter for milestone checking
         )
         saveReadingPosition()
 
@@ -393,9 +411,22 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 // Preserve playing state when auto-advancing between pages
                 moveToPage(nextPageIndex, preservePlayingState = true)
             } else {
-                // No more pages - need to scan more
-                // Still track completion of the last page
+                // No more pages - this might be the end of the book
+                // Track completion of the last page
                 trackPageCompleted()
+
+                // Check for book completion milestone
+                viewModelScope.launch(Dispatchers.IO) {
+                    val bookMilestone = milestoneService.checkBookCompletion(bookId)
+                    if (bookMilestone != null) {
+                        withContext(Dispatchers.Main) {
+                            _state.value = _state.value.copy(
+                                recentMilestones = _state.value.recentMilestones + bookMilestone
+                            )
+                        }
+                    }
+                }
+
                 _state.value = current.copy(needsMorePages = true, isPlaying = false)
                 ttsService.stop()
             }
@@ -444,6 +475,39 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             }
             // If at the very beginning, do nothing
         }
+    }
+
+    /**
+     * Navigate directly to a specific sentence on a specific page.
+     * Used by missed stars dialog to retry skipped sentences.
+     */
+    fun navigateToSentence(pageId: Long, sentenceIndex: Int) {
+        val current = _state.value
+        if (current.pages.isEmpty()) return
+
+        // Find the page index by pageId
+        val pageIndex = current.pages.indexOfFirst { it.id == pageId }
+        if (pageIndex < 0) return
+
+        val page = current.pages[pageIndex]
+        val sentences = parseSentencesForPage(page)
+
+        // Ensure the sentence index is valid
+        val validSentenceIndex = sentenceIndex.coerceIn(0, (sentences.size - 1).coerceAtLeast(0))
+
+        _state.value = current.copy(
+            currentPageIndex = pageIndex,
+            currentSentenceIndex = validSentenceIndex,
+            sentences = sentences,
+            needsMorePages = false,
+            highlightRange = null,
+            targetWord = null,
+            ttsHasPronouncedTargetWord = false,
+            attemptCount = 0,
+            lastAttemptSuccess = null,
+            collaborativeState = CollaborativeState.IDLE
+        )
+        saveReadingPosition()
     }
 
     fun togglePlayPause() {
@@ -1114,6 +1178,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             isPlaying = true
         )
 
+        // Track this sentence as having a collaborative opportunity (for milestone completion tracking)
+        val pageId = _state.value.currentPage?.id ?: 0L
+        val sentenceIndex = _state.value.currentSentenceIndex
+        val resolvedChapter = _state.value.currentPage?.resolvedChapter
+        viewModelScope.launch(Dispatchers.IO) {
+            statsRepository.trackCollaborativeOpportunity(bookId, pageId, sentenceIndex, resolvedChapter)
+        }
+
         // Check if single word sentence
         val textWithoutTargetWords = sentence.text.substring(0, range.first).trim()
         if (textWithoutTargetWords.isEmpty()) {
@@ -1425,6 +1497,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             viewModelScope.launch(Dispatchers.IO) {
                 val pageId = current.currentPage?.id ?: 0L
                 val sentenceIndex = current.currentSentenceIndex
+                val resolvedChapter = current.currentPage?.resolvedChapter
                 val attemptResult = statsRepository.recordCollaborativeAttempt(
                     bookId = bookId,
                     pageId = pageId,
@@ -1435,6 +1508,21 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     attemptNumber = newAttemptCount,
                     currentStreak = currentStreak,
                     ttsPronouncedWord = ttsPronouncedWord
+                )
+
+                // Mark sentence as completed for milestone tracking
+                statsRepository.markSentenceCompleted(
+                    bookId = bookId,
+                    pageId = pageId,
+                    sentenceIndex = sentenceIndex,
+                    starType = attemptResult.starType
+                )
+
+                // Check for instant milestones (daily target, multiples, streaks)
+                val todayStats = statsRepository.getTodayStats()
+                val milestoneResult = milestoneService.checkAndAwardInstantMilestones(
+                    currentPoints = todayStats.totalPoints,
+                    currentStreak = attemptResult.newStreak
                 )
 
                 // Update session stats on main thread with star type breakdown
@@ -1450,7 +1538,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                         sessionPoints = current.sessionStats.sessionPoints + attemptResult.totalPoints,
                         sessionStars = current.sessionStats.sessionStars + 1  // Legacy: count all stars
                     )
-                    _state.value = _state.value.copy(sessionStats = sessionStats)
+                    _state.value = _state.value.copy(
+                        sessionStats = sessionStats,
+                        recentMilestones = milestoneResult.earnedMilestones
+                    )
                 }
             }
 
@@ -1547,6 +1638,14 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         // After 3 retry cycles (9 total attempts), give up and move to next sentence
         if (newRetryCycleCount >= 3) {
             Log.d(TAG, "Max retry cycles reached ($newRetryCycleCount), moving to next sentence")
+
+            // Mark this sentence as skipped (missed star)
+            val pageId = _state.value.currentPage?.id ?: 0L
+            val sentenceIdx = _state.value.currentSentenceIndex
+            viewModelScope.launch(Dispatchers.IO) {
+                statsRepository.markSentenceSkippedByTTS(bookId, pageId, sentenceIdx)
+            }
+
             _state.value = _state.value.copy(
                 collaborativeState = CollaborativeState.IDLE,
                 targetWord = null,
@@ -1641,6 +1740,21 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         soundPool?.play(errorSoundId, 1f, 1f, 1, 0, 1f)
     }
 
+    // ==================== MILESTONE MANAGEMENT ====================
+
+    /**
+     * Clear recent milestones after they've been displayed.
+     * Call this from UI after showing milestone toasts.
+     */
+    fun clearRecentMilestones() {
+        _state.value = _state.value.copy(recentMilestones = emptyList())
+    }
+
+    /**
+     * Get the current milestone service for external use (e.g., game rewards dialog).
+     */
+    fun getMilestoneService(): MilestoneRewardsService = milestoneService
+
     // ==================== READING SESSION TRACKING ====================
 
     /**
@@ -1695,13 +1809,40 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Track that a page was completed in the current session.
+     * Also checks for page and chapter completion milestones.
      */
     private fun trackPageCompleted() {
         sessionPagesRead++
+        val currentPageId = _state.value.currentPage?.id ?: return
+        val currentChapter = _state.value.currentPage?.resolvedChapter
+        val previousChapter = _state.value.chapterTitle
+
         viewModelScope.launch(Dispatchers.IO) {
             statsRepository.recordPageCompleted()
             if (bookId > 0) {
                 statsRepository.recordBookPageRead(bookId)
+            }
+
+            // Check for page completion milestone
+            val pageMilestone = milestoneService.checkPageCompletion(bookId, currentPageId)
+            if (pageMilestone != null) {
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(
+                        recentMilestones = _state.value.recentMilestones + pageMilestone
+                    )
+                }
+            }
+
+            // Check for chapter completion milestone (if chapter changed)
+            if (previousChapter != null && currentChapter != previousChapter) {
+                val chapterMilestone = milestoneService.checkChapterCompletion(bookId, previousChapter)
+                if (chapterMilestone != null) {
+                    withContext(Dispatchers.Main) {
+                        _state.value = _state.value.copy(
+                            recentMilestones = _state.value.recentMilestones + chapterMilestone
+                        )
+                    }
+                }
             }
         }
     }

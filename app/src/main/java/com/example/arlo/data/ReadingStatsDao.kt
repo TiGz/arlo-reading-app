@@ -407,6 +407,172 @@ interface ReadingStatsDao {
      */
     @Query("SELECT COALESCE(SUM(racesPlayed), 0) FROM game_sessions WHERE date = :date")
     suspend fun getTotalRacesPlayedForDate(date: String): Int
+
+    // ==================== MILESTONE CLAIMS ====================
+
+    /**
+     * Check if a milestone has already been claimed today.
+     */
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM milestone_claims
+            WHERE date = :date AND milestoneType = :type AND milestoneId = :milestoneId
+        )
+    """)
+    suspend fun isMilestoneClaimed(date: String, type: String, milestoneId: String): Boolean
+
+    /**
+     * Insert a milestone claim record.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMilestoneClaim(claim: MilestoneClaimRecord)
+
+    /**
+     * Get all milestone claims for a date.
+     */
+    @Query("SELECT * FROM milestone_claims WHERE date = :date ORDER BY claimedAt DESC")
+    suspend fun getMilestoneClaimsForDate(date: String): List<MilestoneClaimRecord>
+
+    /**
+     * Get total races awarded today from milestones.
+     */
+    @Query("SELECT COALESCE(SUM(racesAwarded), 0) FROM milestone_claims WHERE date = :date")
+    suspend fun getTotalRacesAwardedToday(date: String): Int
+
+    /**
+     * Get highest multiple claimed today.
+     */
+    @Query("""
+        SELECT MAX(CAST(milestoneId AS INTEGER))
+        FROM milestone_claims
+        WHERE date = :date AND milestoneType = 'MULTIPLE'
+    """)
+    suspend fun getHighestMultipleClaimedToday(date: String): Int?
+
+    /**
+     * Get highest streak milestone claimed today.
+     */
+    @Query("""
+        SELECT MAX(CAST(milestoneId AS INTEGER))
+        FROM milestone_claims
+        WHERE date = :date AND milestoneType = 'STREAK'
+    """)
+    suspend fun getHighestStreakMilestoneToday(date: String): Int?
+
+    // ==================== SENTENCE COMPLETION STATE ====================
+
+    /**
+     * Insert or update sentence completion state.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSentenceCompletionState(state: SentenceCompletionState)
+
+    /**
+     * Get sentence completion state for a specific sentence.
+     */
+    @Query("""
+        SELECT * FROM sentence_completion_state
+        WHERE bookId = :bookId AND pageId = :pageId AND sentenceIndex = :sentenceIndex
+    """)
+    suspend fun getSentenceCompletionState(bookId: Long, pageId: Long, sentenceIndex: Int): SentenceCompletionState?
+
+    /**
+     * Get all sentence completion states for a page.
+     */
+    @Query("SELECT * FROM sentence_completion_state WHERE bookId = :bookId AND pageId = :pageId")
+    suspend fun getSentenceStatesForPage(bookId: Long, pageId: Long): List<SentenceCompletionState>
+
+    /**
+     * Get page completion rate (completed / total with collaborative opportunities).
+     */
+    @Query("""
+        SELECT
+            CAST(SUM(CASE WHEN wasCompletedSuccessfully = 1 THEN 1 ELSE 0 END) AS REAL) /
+            NULLIF(SUM(CASE WHEN hasCollaborativeOpportunity = 1 THEN 1 ELSE 0 END), 0)
+        FROM sentence_completion_state
+        WHERE bookId = :bookId AND pageId = :pageId
+    """)
+    suspend fun getPageCompletionRate(bookId: Long, pageId: Long): Float?
+
+    /**
+     * Get chapter completion rate (by resolvedChapter).
+     */
+    @Query("""
+        SELECT
+            CAST(SUM(CASE WHEN wasCompletedSuccessfully = 1 THEN 1 ELSE 0 END) AS REAL) /
+            NULLIF(SUM(CASE WHEN hasCollaborativeOpportunity = 1 THEN 1 ELSE 0 END), 0)
+        FROM sentence_completion_state
+        WHERE bookId = :bookId AND resolvedChapter = :chapter
+    """)
+    suspend fun getChapterCompletionRate(bookId: Long, chapter: String): Float?
+
+    /**
+     * Get book completion rate (all sentences in book).
+     */
+    @Query("""
+        SELECT
+            CAST(SUM(CASE WHEN wasCompletedSuccessfully = 1 THEN 1 ELSE 0 END) AS REAL) /
+            NULLIF(SUM(CASE WHEN hasCollaborativeOpportunity = 1 THEN 1 ELSE 0 END), 0)
+        FROM sentence_completion_state
+        WHERE bookId = :bookId
+    """)
+    suspend fun getBookCompletionRate(bookId: Long): Float?
+
+    /**
+     * Get all missed stars (sentences skipped by TTS that weren't completed).
+     */
+    @Query("""
+        SELECT * FROM sentence_completion_state
+        WHERE bookId = :bookId
+          AND wasSkippedByTTS = 1
+          AND wasCompletedSuccessfully = 0
+        ORDER BY pageId, sentenceIndex
+    """)
+    suspend fun getMissedStarsForBook(bookId: Long): List<SentenceCompletionState>
+
+    /**
+     * Count missed stars for a book.
+     */
+    @Query("""
+        SELECT COUNT(*) FROM sentence_completion_state
+        WHERE bookId = :bookId
+          AND wasSkippedByTTS = 1
+          AND wasCompletedSuccessfully = 0
+    """)
+    suspend fun getMissedStarsCount(bookId: Long): Int
+
+    /**
+     * Observe missed stars count for a book (for UI badge).
+     */
+    @Query("""
+        SELECT COUNT(*) FROM sentence_completion_state
+        WHERE bookId = :bookId
+          AND wasSkippedByTTS = 1
+          AND wasCompletedSuccessfully = 0
+    """)
+    fun observeMissedStarsCount(bookId: Long): Flow<Int>
+
+    /**
+     * Get distinct chapters for a book (for chapter completion checking).
+     */
+    @Query("""
+        SELECT DISTINCT resolvedChapter
+        FROM sentence_completion_state
+        WHERE bookId = :bookId AND resolvedChapter IS NOT NULL
+    """)
+    suspend fun getChaptersWithCompletionData(bookId: Long): List<String>
+
+    /**
+     * Check if all sentences with collaborative opportunities in a page are complete.
+     */
+    @Query("""
+        SELECT COUNT(*) = 0
+        FROM sentence_completion_state
+        WHERE bookId = :bookId AND pageId = :pageId
+          AND hasCollaborativeOpportunity = 1
+          AND wasCompletedSuccessfully = 0
+    """)
+    suspend fun isPageFullyCompleted(bookId: Long, pageId: Long): Boolean
 }
 
 /**

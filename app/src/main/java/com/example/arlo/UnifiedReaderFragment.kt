@@ -24,6 +24,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.arlo.databinding.FragmentUnifiedReaderBinding
+import com.example.arlo.games.MissedStarsDialogFragment
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
@@ -128,6 +129,11 @@ class UnifiedReaderFragment : Fragment() {
 
         binding.btnSpeed.setOnClickListener {
             showSpeedPicker()
+        }
+
+        // Missed stars button opens dialog to retry skipped sentences
+        binding.btnMissedStars.setOnClickListener {
+            showMissedStarsDialog()
         }
 
         // Stats button opens the reading dashboard
@@ -416,6 +422,15 @@ class UnifiedReaderFragment : Fragment() {
         binding.btnAutoAdvance.setImageResource(autoAdvanceIcon)
         binding.btnAutoAdvance.tooltipText = if (state.autoAdvance) "Auto-advance: ON" else "Auto-advance: OFF (manual)"
         binding.btnAutoAdvance.contentDescription = if (state.autoAdvance) "Auto-advance is on, tap to switch to manual" else "Manual mode, tap to switch to auto-advance"
+
+        // Missed stars button - show when there are skipped sentences
+        val missedCount = state.missedStarsCount
+        if (missedCount > 0) {
+            binding.missedStarsContainer.visibility = View.VISIBLE
+            binding.tvMissedStarsCount.text = if (missedCount > 99) "99+" else missedCount.toString()
+        } else {
+            binding.missedStarsContainer.visibility = View.GONE
+        }
     }
 
     private fun updateCollaborativeIndicator(state: UnifiedReaderViewModel.ReaderState) {
@@ -927,6 +942,17 @@ class UnifiedReaderFragment : Fragment() {
             .replace(R.id.container, StatsDashboardFragment.newInstance())
             .addToBackStack(null)
             .commit()
+    }
+
+    /**
+     * Show the missed stars dialog for retrying skipped sentences.
+     */
+    private fun showMissedStarsDialog() {
+        viewModel.stopReading()
+        MissedStarsDialogFragment.newInstance(bookId) { pageId, returnedBookId, sentenceIndex ->
+            // Navigate to the missed sentence
+            viewModel.navigateToSentence(pageId, sentenceIndex)
+        }.show(parentFragmentManager, MissedStarsDialogFragment.TAG)
     }
 
     /**

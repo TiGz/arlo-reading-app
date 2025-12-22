@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <!-- Title and Value Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tvMilestoneTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Milestone"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary" />
+
+        <!-- Value Badge -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_value_badge_coral"
+            android:gravity="center"
+            android:paddingHorizontal="12dp">
+
+            <TextView
+                android:id="@+id/tvMilestoneValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/secondary"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:id="@+id/tvMilestoneUnit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="races"
+                android:textSize="12sp"
+                android:textColor="@color/text_hint" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Description -->
+    <TextView
+        android:id="@+id/tvMilestoneDescription"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Description"
+        android:textSize="12sp"
+        android:textColor="@color/text_hint" />
+
+    <!-- Slider -->
+    <com.google.android.material.slider.Slider
+        android:id="@+id/sliderMilestone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:valueFrom="0"
+        android:valueTo="5"
+        android:stepSize="1"
+        app:haloColor="@color/switch_track_coral"
+        app:thumbColor="@color/secondary"
+        app:thumbRadius="12dp"
+        app:thumbElevation="2dp"
+        app:trackColorActive="@color/secondary"
+        app:trackColorInactive="@color/slider_track_inactive"
+        app:trackHeight="6dp"
+        app:labelBehavior="gone" />
+
+</LinearLayout>

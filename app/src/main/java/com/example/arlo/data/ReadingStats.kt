@@ -98,6 +98,16 @@ data class DailyStats(
     val gameRewardClaimed: Boolean = false,  // Has claimed today's reward
     val lastGamePlayedAt: Long? = null,  // Timestamp of last game session
 
+    // Milestone race source tracking for analytics
+    val racesFromDailyTarget: Int = 0,
+    val racesFromMultiples: Int = 0,
+    val racesFromStreaks: Int = 0,
+    val racesFromPages: Int = 0,
+    val racesFromChapters: Int = 0,
+    val racesFromBooks: Int = 0,
+    val highestMultipleReached: Int = 0,
+    val highestStreakMilestone: Int = 0,
+
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     /** Total stars of all types */
@@ -313,6 +323,17 @@ data class ParentSettings(
     // Game reward settings
     val gameRewardsEnabled: Boolean = true,   // Enable/disable game rewards
     val maxRacesPerDay: Int = 3,              // 1-5 races per day
+
+    // Milestone rewards (0-5 races each)
+    val racesForDailyTarget: Int = 1,         // Races when daily target hit
+    val racesPerMultiple: Int = 1,            // Races per 100% multiple (2x, 3x...)
+    val streakThreshold: Int = 5,             // N value for streak milestones
+    val racesPerStreakAchievement: Int = 1,   // Races per N-streak
+    val racesPerPageCompletion: Int = 0,      // Races per page
+    val racesPerChapterCompletion: Int = 1,   // Races per chapter
+    val racesPerBookCompletion: Int = 2,      // Races per book
+    val completionThreshold: Float = 0.8f,    // 80% minimum for completion rewards
+
     val lastModified: Long = System.currentTimeMillis()
 )
 
@@ -402,3 +423,76 @@ data class WeeklySummaryDisplay(
     val weeklyGoalMet: Boolean
         get() = daysWithActivity >= targetDays
 }
+
+// ==================== MILESTONE REWARDS SYSTEM ====================
+
+/**
+ * Milestone types for the enhanced game rewards system.
+ */
+enum class MilestoneType {
+    DAILY_TARGET,    // Reaching daily points goal
+    MULTIPLE,        // Reaching 2x, 3x, etc. of daily target
+    STREAK,          // Hitting streak threshold (5, 10, 15...)
+    PAGE,            // Completing a page
+    CHAPTER,         // Completing a chapter
+    BOOK             // Completing a book
+}
+
+/**
+ * Prevents double-claiming of milestones per day.
+ * Composite primary key ensures each milestone can only be claimed once per day.
+ */
+@Entity(
+    tableName = "milestone_claims",
+    primaryKeys = ["date", "milestoneType", "milestoneId"]
+)
+data class MilestoneClaimRecord(
+    val date: String,                 // "2025-12-22"
+    val milestoneType: String,        // DAILY_TARGET, MULTIPLE, STREAK, PAGE, CHAPTER, BOOK
+    val milestoneId: String,          // Unique identifier (e.g., "2X", "10", pageId, chapterTitle)
+    val racesAwarded: Int,
+    val claimedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Tracks possible vs achieved stars for completion percentage calculation.
+ * Every sentence with a collaborative opportunity gets a record.
+ */
+@Entity(
+    tableName = "sentence_completion_state",
+    primaryKeys = ["bookId", "pageId", "sentenceIndex"],
+    indices = [
+        Index(value = ["bookId", "pageId"]),
+        Index(value = ["bookId", "resolvedChapter"])
+    ]
+)
+data class SentenceCompletionState(
+    val bookId: Long,
+    val pageId: Long,
+    val sentenceIndex: Int,
+    val resolvedChapter: String?,          // Inferred chapter (from Page.resolvedChapter)
+    val hasCollaborativeOpportunity: Boolean = true,
+    val wasAttempted: Boolean = false,
+    val wasCompletedSuccessfully: Boolean = false,
+    val wasSkippedByTTS: Boolean = false,  // Missed star - can retry
+    val starType: String? = null,          // GOLD, SILVER, BRONZE, null
+    val completedAt: Long? = null
+)
+
+/**
+ * Result of checking milestones after an action.
+ */
+data class MilestoneCheckResult(
+    val earnedMilestones: List<EarnedMilestone>,
+    val totalRacesAwarded: Int
+)
+
+/**
+ * A single milestone that was earned.
+ */
+data class EarnedMilestone(
+    val type: MilestoneType,
+    val milestoneId: String,
+    val racesAwarded: Int,
+    val displayMessage: String
+)

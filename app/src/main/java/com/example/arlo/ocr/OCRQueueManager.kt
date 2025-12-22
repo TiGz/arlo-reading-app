@@ -242,18 +242,26 @@ class OCRQueueManager(
         val fullText = sentences.joinToString(" ") { it.text }
         val lastComplete = sentences.lastOrNull()?.isComplete ?: true
 
-        // Update page with OCR result
-        bookDao.updatePageWithOCRResult(
+        // Resolve chapter from this page or previous pages
+        val resolvedChapter = resolveChapterForPage(
+            bookId = page.bookId,
+            pageId = page.id,
+            detectedChapterTitle = pageResult.chapterTitle
+        )
+
+        // Update page with OCR result including resolved chapter
+        bookDao.updatePageWithOCRResultAndChapter(
             pageId = page.id,
             text = fullText,
             json = sentencesJson,
             complete = lastComplete,
             pageLabel = pageResult.pageLabel,
             chapterTitle = pageResult.chapterTitle,
+            resolvedChapter = resolvedChapter,
             confidence = pageResult.confidence
         )
 
-        Log.d(TAG, "Processed first page ${page.id}: ${sentences.size} sentences, pageLabel: ${pageResult.pageLabel}, chapter: ${pageResult.chapterTitle}, confidence: ${pageResult.confidence}")
+        Log.d(TAG, "Processed first page ${page.id}: ${sentences.size} sentences, pageLabel: ${pageResult.pageLabel}, chapter: ${pageResult.chapterTitle}, resolvedChapter: $resolvedChapter, confidence: ${pageResult.confidence}")
 
         // Check for missing pages based on detected page labels (only for numeric labels)
         val currentPageNum = pageResult.pageLabel?.toIntOrNull()
@@ -271,7 +279,71 @@ class OCRQueueManager(
         }
     }
 
+    /**
+     * Resolve the chapter for a page by looking at the detected chapter title
+     * or by looking backward through previous pages.
+     */
+    private suspend fun resolveChapterForPage(
+        bookId: Long,
+        pageId: Long,
+        detectedChapterTitle: String?
+    ): String? {
+        // 1. If this page has a valid chapter title, use it
+        if (detectedChapterTitle != null && isValidChapterTitle(detectedChapterTitle, bookId)) {
+            Log.d(TAG, "Using detected chapter title: $detectedChapterTitle")
+            return detectedChapterTitle
+        }
+
+        // 2. Look backward through previous pages to find the most recent chapter
+        val previousPages = bookDao.getPagesBeforePage(bookId, pageId)
+
+        for (page in previousPages) {
+            // Check if this page has a detected chapter title that's valid
+            if (page.chapterTitle != null && isValidChapterTitle(page.chapterTitle, bookId)) {
+                Log.d(TAG, "Resolved chapter from page ${page.id}: ${page.chapterTitle}")
+                return page.chapterTitle
+            }
+            // Also check if it has a resolved chapter (from earlier inference)
+            if (page.resolvedChapter != null) {
+                Log.d(TAG, "Resolved chapter from previous inference on page ${page.id}: ${page.resolvedChapter}")
+                return page.resolvedChapter
+            }
+        }
+
+        // 3. No chapter found - return null (will be treated as "default chapter")
+        Log.d(TAG, "No chapter found for page $pageId in book $bookId")
+        return null
+    }
+
+    /**
+     * Determine if a chapter title is valid (not the book title, not too short, not just a number).
+     */
+    private suspend fun isValidChapterTitle(title: String, bookId: Long): Boolean {
+        val book = bookDao.getBook(bookId) ?: return true
+
+        // Don't use book title as chapter title
+        if (title.equals(book.title, ignoreCase = true)) {
+            Log.d(TAG, "Rejecting chapter title '$title' - matches book title")
+            return false
+        }
+
+        // Very short strings (< 3 chars) unlikely to be chapters
+        if (title.length < 3) {
+            Log.d(TAG, "Rejecting chapter title '$title' - too short")
+            return false
+        }
+
+        // Strings that are just numbers might be page numbers, not chapters
+        if (title.all { it.isDigit() }) {
+            Log.d(TAG, "Rejecting chapter title '$title' - all digits")
+            return false
+        }
+
+        return true
+    }
+
     private suspend fun createAdditionalPage(bookId: Long, pageResult: ClaudeOCRService.PageOCRResult, sequentialNum: Int) {
+        // First insert the page to get an ID
         val newPage = Page(
             bookId = bookId,
             imagePath = "",  // No separate image for multi-page captures
@@ -285,7 +357,29 @@ class OCRQueueManager(
             processingStatus = "COMPLETED"
         )
         val newPageId = bookDao.insertPage(newPage)
-        Log.d(TAG, "Created additional page $newPageId for book $bookId: sequential=$sequentialNum, pageLabel=${pageResult.pageLabel}, chapter=${pageResult.chapterTitle}, confidence=${pageResult.confidence}")
+
+        // Now resolve chapter for this page (needs the page to exist for backward lookup)
+        val resolvedChapter = resolveChapterForPage(
+            bookId = bookId,
+            pageId = newPageId,
+            detectedChapterTitle = pageResult.chapterTitle
+        )
+
+        // Update with resolved chapter
+        if (resolvedChapter != null) {
+            bookDao.updatePageWithOCRResultAndChapter(
+                pageId = newPageId,
+                text = pageResult.fullText,
+                json = toJson(pageResult.sentences),
+                complete = pageResult.sentences.lastOrNull()?.isComplete ?: true,
+                pageLabel = pageResult.pageLabel,
+                chapterTitle = pageResult.chapterTitle,
+                resolvedChapter = resolvedChapter,
+                confidence = pageResult.confidence
+            )
+        }
+
+        Log.d(TAG, "Created additional page $newPageId for book $bookId: sequential=$sequentialNum, pageLabel=${pageResult.pageLabel}, chapter=${pageResult.chapterTitle}, resolvedChapter=$resolvedChapter, confidence=${pageResult.confidence}")
     }
 
     private suspend fun handleProcessingError(page: Page, error: Exception) {

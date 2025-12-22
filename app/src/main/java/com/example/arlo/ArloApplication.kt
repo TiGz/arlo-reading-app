@@ -11,6 +11,8 @@ import android.util.Log
 import com.example.arlo.data.AppDatabase
 import com.example.arlo.data.BookRepository
 import com.example.arlo.data.ReadingStatsRepository
+import com.example.arlo.games.GameRewardsManager
+import com.example.arlo.games.MilestoneRewardsService
 import com.example.arlo.ml.ClaudeOCRService
 import com.example.arlo.ocr.OCRQueueManager
 import com.example.arlo.speech.SpeechSetupManager
@@ -27,6 +29,10 @@ class ArloApplication : Application() {
     val database by lazy { AppDatabase.getDatabase(this) }
     val repository by lazy { BookRepository(database.bookDao()) }
     val statsRepository by lazy { ReadingStatsRepository(database.readingStatsDao()) }
+
+    // Game rewards services
+    val milestoneRewardsService by lazy { MilestoneRewardsService(statsRepository) }
+    val gameRewardsManager by lazy { GameRewardsManager(statsRepository) }
 
     // TTS is initialized eagerly so it's ready when needed
     lateinit var ttsService: TTSService

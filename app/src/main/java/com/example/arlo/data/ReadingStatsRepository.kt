@@ -1133,4 +1133,195 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
             )
         )
     }
+
+    // ==================== SENTENCE COMPLETION STATE (for milestone rewards) ====================
+
+    /**
+     * Track that a sentence has a collaborative opportunity (called when entering a sentence).
+     */
+    suspend fun trackCollaborativeOpportunity(
+        bookId: Long,
+        pageId: Long,
+        sentenceIndex: Int,
+        resolvedChapter: String?
+    ) {
+        val existing = dao.getSentenceCompletionState(bookId, pageId, sentenceIndex)
+        if (existing == null) {
+            dao.upsertSentenceCompletionState(
+                SentenceCompletionState(
+                    bookId = bookId,
+                    pageId = pageId,
+                    sentenceIndex = sentenceIndex,
+                    resolvedChapter = resolvedChapter,
+                    hasCollaborativeOpportunity = true
+                )
+            )
+        }
+    }
+
+    /**
+     * Mark a sentence as completed successfully (called when user gets the word right).
+     */
+    suspend fun markSentenceCompleted(
+        bookId: Long,
+        pageId: Long,
+        sentenceIndex: Int,
+        starType: StarType
+    ) {
+        val existing = dao.getSentenceCompletionState(bookId, pageId, sentenceIndex)
+        if (existing != null) {
+            dao.upsertSentenceCompletionState(
+                existing.copy(
+                    wasAttempted = true,
+                    wasCompletedSuccessfully = true,
+                    wasSkippedByTTS = false, // Clear skipped flag if retrying
+                    starType = starType.name,
+                    completedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    /**
+     * Mark a sentence as skipped by TTS (called when TTS reads the word after max retries).
+     * This creates a "missed star" that can be retried later.
+     */
+    suspend fun markSentenceSkippedByTTS(
+        bookId: Long,
+        pageId: Long,
+        sentenceIndex: Int
+    ) {
+        val existing = dao.getSentenceCompletionState(bookId, pageId, sentenceIndex)
+        if (existing != null && !existing.wasCompletedSuccessfully) {
+            dao.upsertSentenceCompletionState(
+                existing.copy(
+                    wasAttempted = true,
+                    wasSkippedByTTS = true
+                )
+            )
+        }
+    }
+
+    /**
+     * Get missed stars for a book (sentences skipped that can be retried).
+     */
+    suspend fun getMissedStars(bookId: Long): List<SentenceCompletionState> {
+        return dao.getMissedStarsForBook(bookId)
+    }
+
+    /**
+     * Get missed stars count for a book.
+     */
+    suspend fun getMissedStarsCount(bookId: Long): Int {
+        return dao.getMissedStarsCount(bookId)
+    }
+
+    /**
+     * Observe missed stars count for a book (for UI badge).
+     */
+    fun observeMissedStarsCount(bookId: Long): Flow<Int> {
+        return dao.observeMissedStarsCount(bookId)
+    }
+
+    /**
+     * Get page completion rate (for milestone checking).
+     */
+    suspend fun getPageCompletionRate(bookId: Long, pageId: Long): Float {
+        return dao.getPageCompletionRate(bookId, pageId) ?: 0f
+    }
+
+    /**
+     * Get chapter completion rate (for milestone checking).
+     */
+    suspend fun getChapterCompletionRate(bookId: Long, chapter: String): Float {
+        return dao.getChapterCompletionRate(bookId, chapter) ?: 0f
+    }
+
+    /**
+     * Get book completion rate (for milestone checking).
+     */
+    suspend fun getBookCompletionRate(bookId: Long): Float {
+        return dao.getBookCompletionRate(bookId) ?: 0f
+    }
+
+    /**
+     * Check if a page is fully completed.
+     */
+    suspend fun isPageFullyCompleted(bookId: Long, pageId: Long): Boolean {
+        return dao.isPageFullyCompleted(bookId, pageId)
+    }
+
+    /**
+     * Get distinct chapters with completion data for a book.
+     */
+    suspend fun getChaptersWithCompletionData(bookId: Long): List<String> {
+        return dao.getChaptersWithCompletionData(bookId)
+    }
+
+    // ==================== MILESTONE CLAIMS ====================
+
+    /**
+     * Check if a milestone has been claimed today.
+     */
+    suspend fun isMilestoneClaimed(type: MilestoneType, milestoneId: String): Boolean {
+        return dao.isMilestoneClaimed(todayString(), type.name, milestoneId)
+    }
+
+    /**
+     * Claim a milestone and record the award.
+     */
+    suspend fun claimMilestone(type: MilestoneType, milestoneId: String, racesAwarded: Int) {
+        dao.insertMilestoneClaim(
+            MilestoneClaimRecord(
+                date = todayString(),
+                milestoneType = type.name,
+                milestoneId = milestoneId,
+                racesAwarded = racesAwarded
+            )
+        )
+    }
+
+    /**
+     * Get total races awarded today from all milestones.
+     */
+    suspend fun getTotalRacesAwardedToday(): Int {
+        return dao.getTotalRacesAwardedToday(todayString())
+    }
+
+    /**
+     * Get highest multiple milestone claimed today (for tracking 2x, 3x, etc.).
+     */
+    suspend fun getHighestMultipleClaimedToday(): Int {
+        return dao.getHighestMultipleClaimedToday(todayString()) ?: 0
+    }
+
+    /**
+     * Get highest streak milestone claimed today.
+     */
+    suspend fun getHighestStreakMilestoneToday(): Int {
+        return dao.getHighestStreakMilestoneToday(todayString()) ?: 0
+    }
+
+    /**
+     * Update daily stats with milestone race sources for analytics.
+     */
+    suspend fun updateMilestoneRaceSources(
+        racesFromDailyTarget: Int = 0,
+        racesFromMultiples: Int = 0,
+        racesFromStreaks: Int = 0,
+        racesFromPages: Int = 0,
+        racesFromChapters: Int = 0,
+        racesFromBooks: Int = 0
+    ) {
+        val today = getTodayStats()
+        dao.upsertDailyStats(today.copy(
+            racesFromDailyTarget = today.racesFromDailyTarget + racesFromDailyTarget,
+            racesFromMultiples = today.racesFromMultiples + racesFromMultiples,
+            racesFromStreaks = today.racesFromStreaks + racesFromStreaks,
+            racesFromPages = today.racesFromPages + racesFromPages,
+            racesFromChapters = today.racesFromChapters + racesFromChapters,
+            racesFromBooks = today.racesFromBooks + racesFromBooks,
+            updatedAt = System.currentTimeMillis()
+        ))
+    }
 }

@@ -23,9 +23,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ParentSettings::class,
         ReadingSession::class,
         CompletedSentence::class,
-        GameSessionRecord::class
+        GameSessionRecord::class,
+        // New entities for milestone rewards system
+        MilestoneClaimRecord::class,
+        SentenceCompletionState::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(SentenceListConverter::class)
@@ -355,6 +358,110 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // ============ Add resolvedChapter column to pages ============
+                db.execSQL("ALTER TABLE pages ADD COLUMN resolvedChapter TEXT")
+
+                // ============ Add milestone settings to parent_settings ============
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN racesForDailyTarget INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN racesPerMultiple INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN streakThreshold INTEGER NOT NULL DEFAULT 5")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN racesPerStreakAchievement INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN racesPerPageCompletion INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN racesPerChapterCompletion INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN racesPerBookCompletion INTEGER NOT NULL DEFAULT 2")
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN completionThreshold REAL NOT NULL DEFAULT 0.8")
+
+                // ============ Add milestone tracking columns to daily_stats ============
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesFromDailyTarget INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesFromMultiples INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesFromStreaks INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesFromPages INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesFromChapters INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesFromBooks INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN highestMultipleReached INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN highestStreakMilestone INTEGER NOT NULL DEFAULT 0")
+
+                // ============ Create milestone_claims table ============
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS milestone_claims (
+                        date TEXT NOT NULL,
+                        milestoneType TEXT NOT NULL,
+                        milestoneId TEXT NOT NULL,
+                        racesAwarded INTEGER NOT NULL,
+                        claimedAt INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (date, milestoneType, milestoneId)
+                    )
+                """)
+
+                // ============ Create sentence_completion_state table ============
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sentence_completion_state (
+                        bookId INTEGER NOT NULL,
+                        pageId INTEGER NOT NULL,
+                        sentenceIndex INTEGER NOT NULL,
+                        resolvedChapter TEXT,
+                        hasCollaborativeOpportunity INTEGER NOT NULL DEFAULT 1,
+                        wasAttempted INTEGER NOT NULL DEFAULT 0,
+                        wasCompletedSuccessfully INTEGER NOT NULL DEFAULT 0,
+                        wasSkippedByTTS INTEGER NOT NULL DEFAULT 0,
+                        starType TEXT,
+                        completedAt INTEGER,
+                        PRIMARY KEY (bookId, pageId, sentenceIndex)
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sentence_completion_state_book_page ON sentence_completion_state(bookId, pageId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sentence_completion_state_book_chapter ON sentence_completion_state(bookId, resolvedChapter)")
+
+                // ============ Backfill resolvedChapter for existing pages ============
+                // Step 1: Set resolvedChapter = chapterTitle where chapterTitle exists
+                db.execSQL("UPDATE pages SET resolvedChapter = chapterTitle WHERE chapterTitle IS NOT NULL")
+
+                // Step 2: Backfill from previous pages (propagate chapter forward)
+                backfillResolvedChapters(db)
+            }
+
+            private fun backfillResolvedChapters(db: SupportSQLiteDatabase) {
+                // Get all books
+                val booksCursor = db.query("SELECT DISTINCT bookId FROM pages")
+                val bookIds = mutableListOf<Long>()
+                while (booksCursor.moveToNext()) {
+                    bookIds.add(booksCursor.getLong(0))
+                }
+                booksCursor.close()
+
+                for (bookId in bookIds) {
+                    // Get pages in order for this book
+                    val pagesCursor = db.query(
+                        "SELECT id, pageNumber, chapterTitle, resolvedChapter FROM pages WHERE bookId = ? ORDER BY pageNumber ASC",
+                        arrayOf(bookId.toString())
+                    )
+
+                    var lastKnownChapter: String? = null
+                    while (pagesCursor.moveToNext()) {
+                        val pageId = pagesCursor.getLong(0)
+                        val chapterTitle = if (pagesCursor.isNull(2)) null else pagesCursor.getString(2)
+                        val resolvedChapter = if (pagesCursor.isNull(3)) null else pagesCursor.getString(3)
+
+                        // If this page has a chapter title, update lastKnownChapter
+                        if (chapterTitle != null) {
+                            lastKnownChapter = chapterTitle
+                        }
+
+                        // If resolvedChapter is null but we have a lastKnownChapter, backfill
+                        if (resolvedChapter == null && lastKnownChapter != null) {
+                            db.execSQL(
+                                "UPDATE pages SET resolvedChapter = ? WHERE id = ?",
+                                arrayOf(lastKnownChapter, pageId)
+                            )
+                        }
+                    }
+                    pagesCursor.close()
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -365,7 +472,8 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                    MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13
+                    MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                    MIGRATION_13_14
                 )
                 .fallbackToDestructiveMigration()
                 .build()
