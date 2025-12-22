@@ -563,37 +563,46 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             }
 
             viewModelScope.launch {
-                // Check if audio is cached or in-flight - if not, show loading indicator
+                // Check if audio is cached - if not, show loading indicator
                 val isCached = ttsCacheManager.isCached(sentence.text)
                 val isInFlight = ttsCacheManager.isInFlight(sentence.text)
+                Log.d("AudioLoading", "speakCurrentSentence: isCached=$isCached, isInFlight=$isInFlight, sentence='${sentence.text.take(40)}...'")
+
                 if (!isCached) {
+                    Log.d("AudioLoading", "Setting isLoadingAudio=true (not cached)")
                     _state.value = _state.value.copy(isLoadingAudio = true)
                     if (isInFlight) {
                         Log.d(TAG, "Audio in-flight, waiting for existing request...")
                     }
+
+                    // Wait for synthesis to complete before playing
+                    // This ensures the loading indicator shows for the full network request time
+                    val result = ttsCacheManager.getOrSynthesize(sentence.text)
+                    Log.d("AudioLoading", "Synthesis complete, setting isLoadingAudio=false")
+                    _state.value = _state.value.copy(isLoadingAudio = false)
+
+                    if (result == null) {
+                        Log.w("AudioLoading", "Synthesis failed, falling back to TTS without cache")
+                    }
+                } else {
+                    Log.d("AudioLoading", "Audio already cached, skipping loading indicator")
                 }
 
-                try {
-                    ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
-                        // Clear loading state when playback starts
-                        _state.value = _state.value.copy(isLoadingAudio = false)
-                        // Callback when TTS finishes
-                        if (_state.value.isPlaying) {
-                            if (_state.value.autoAdvance) {
-                                // Auto-advance mode: move to next sentence and keep reading
-                                nextSentence()
-                                if (_state.value.isPlaying && !_state.value.needsMorePages) {
-                                    speakCurrentSentence()
-                                }
-                            } else {
-                                // Manual mode: stop after reading one sentence
-                                _state.value = _state.value.copy(isPlaying = false)
+                // Now play the audio (will use cache if available)
+                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
+                    // Callback when TTS finishes
+                    if (_state.value.isPlaying) {
+                        if (_state.value.autoAdvance) {
+                            // Auto-advance mode: move to next sentence and keep reading
+                            nextSentence()
+                            if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                                speakCurrentSentence()
                             }
+                        } else {
+                            // Manual mode: stop after reading one sentence
+                            _state.value = _state.value.copy(isPlaying = false)
                         }
                     }
-                } finally {
-                    // Clear loading state
-                    _state.value = _state.value.copy(isLoadingAudio = false)
                 }
             }
         } else {
@@ -620,6 +629,25 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             }
 
             viewModelScope.launch {
+                // Check if audio is cached - if not, show loading indicator
+                val isCached = ttsCacheManager.isCached(sentence.text)
+                Log.d("AudioLoading", "speakCurrentSentenceAndAutoAdvance: isCached=$isCached")
+
+                if (!isCached) {
+                    Log.d("AudioLoading", "Setting isLoadingAudio=true (short sentence not cached)")
+                    _state.value = _state.value.copy(isLoadingAudio = true)
+
+                    // Wait for synthesis to complete before playing
+                    val result = ttsCacheManager.getOrSynthesize(sentence.text)
+                    Log.d("AudioLoading", "Short sentence synthesis complete, setting isLoadingAudio=false")
+                    _state.value = _state.value.copy(isLoadingAudio = false)
+
+                    if (result == null) {
+                        Log.w("AudioLoading", "Short sentence synthesis failed")
+                    }
+                }
+
+                // Now play the audio (will use cache if available)
                 ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
                     // Always auto-advance after short sentences in collaborative mode
                     if (_state.value.isPlaying) {
@@ -1255,6 +1283,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             // Cache miss - use getOrSynthesize which handles request deduplication
             if (stopAtMs == null) {
                 Log.d(TAG, "Collaborative: cache miss, synthesizing sentence first")
+                Log.d("AudioLoading", "Collaborative mode: setting isLoadingAudio=true (cache miss)")
                 _state.value = _state.value.copy(isLoadingAudio = true)
                 try {
                     // Use the queue-based synthesis - this will wait if request is already in-flight
@@ -1266,8 +1295,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to synthesize sentence: ${e.message}")
                 } finally {
+                    Log.d("AudioLoading", "Collaborative mode: setting isLoadingAudio=false (synthesis complete)")
                     _state.value = _state.value.copy(isLoadingAudio = false)
                 }
+            } else {
+                Log.d("AudioLoading", "Collaborative mode: timestamp found, audio already cached")
             }
 
             if (stopAtMs != null) {

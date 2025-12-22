@@ -591,7 +591,9 @@ class UnifiedReaderFragment : Fragment() {
      * Designed to be obviously visible and engaging for children.
      */
     private fun updateAudioLoadingIndicator(isLoading: Boolean) {
+        android.util.Log.d("AudioLoading", "updateAudioLoadingIndicator called with isLoading=$isLoading")
         if (isLoading) {
+            android.util.Log.d("AudioLoading", "Showing audio loading indicator - making VISIBLE")
             binding.audioLoadingIndicator.visibility = View.VISIBLE
 
             // Initialize animations if needed
@@ -625,6 +627,7 @@ class UnifiedReaderFragment : Fragment() {
             cycleLoadingMessage()
 
         } else {
+            android.util.Log.d("AudioLoading", "Hiding audio loading indicator - making GONE")
             binding.audioLoadingIndicator.visibility = View.GONE
 
             // Stop all animations
