@@ -13,6 +13,7 @@ import com.example.arlo.data.BookRepository
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.games.GameRewardsManager
 import com.example.arlo.games.MilestoneRewardsService
+import com.example.arlo.games.RaceCreditsManager
 import com.example.arlo.ml.ClaudeOCRService
 import com.example.arlo.ocr.OCRQueueManager
 import com.example.arlo.speech.SpeechSetupManager
@@ -31,7 +32,8 @@ class ArloApplication : Application() {
     val statsRepository by lazy { ReadingStatsRepository(database.readingStatsDao()) }
 
     // Game rewards services
-    val milestoneRewardsService by lazy { MilestoneRewardsService(statsRepository) }
+    val raceCreditsManager by lazy { RaceCreditsManager.getInstance(this) }
+    val milestoneRewardsService by lazy { MilestoneRewardsService(statsRepository, raceCreditsManager) }
     val gameRewardsManager by lazy { GameRewardsManager(statsRepository) }
 
     // TTS is initialized eagerly so it's ready when needed
@@ -83,6 +85,13 @@ class ArloApplication : Application() {
         // Run speech recognition diagnostics on background thread
         backgroundExecutor.execute {
             checkSpeechRecognitionAvailability()
+        }
+
+        // Sync race credits from database on startup
+        applicationScope.launch {
+            val todayStats = statsRepository.getTodayStats()
+            raceCreditsManager.syncFromDatabase(todayStats.racesEarned, todayStats.racesUsed)
+            Log.d("ArloApplication", "Synced race credits: earned=${todayStats.racesEarned}, used=${todayStats.racesUsed}, available=${raceCreditsManager.getAvailableRaces()}")
         }
 
         // Pre-cache voice preview audio for settings

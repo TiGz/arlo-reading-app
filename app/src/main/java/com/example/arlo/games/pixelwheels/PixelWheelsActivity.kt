@@ -26,6 +26,7 @@ import android.view.WindowManager
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
 import com.example.arlo.games.GameSession
+import com.example.arlo.games.RaceCreditsManager
 
 /**
  * Activity that hosts PixelWheels with race-limiting enforcement.
@@ -45,18 +46,24 @@ class PixelWheelsActivity : AndroidApplication() {
     private var startedAt: Long = 0
 
     private lateinit var game: RaceLimitedPwGame
+    private lateinit var raceCreditsManager: RaceCreditsManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         android.util.Log.d("PixelWheelsActivity", "onCreate called")
 
+        // Initialize race credits manager
+        raceCreditsManager = RaceCreditsManager.getInstance(this)
+
         // Keep screen on during game
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Extract session config from intent
-        maxRaces = intent.getIntExtra(EXTRA_MAX_RACES, 1)
+        // Read available races from the single source of truth
+        maxRaces = raceCreditsManager.getAvailableRaces()
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
         startedAt = System.currentTimeMillis()
+
+        android.util.Log.d("PixelWheelsActivity", "Read maxRaces from RaceCreditsManager: $maxRaces")
 
         // Restore state if process was killed (e.g., system reclaimed memory)
         savedInstanceState?.let { bundle ->
@@ -108,9 +115,13 @@ class PixelWheelsActivity : AndroidApplication() {
     }
 
     private fun handleRaceComplete(position: Int) {
-        // Note: RaceLimitedPwGame tracks racesCompleted internally
-        // We sync from it when finishing to avoid double-counting
-        android.util.Log.d("PixelWheelsActivity", "handleRaceComplete: position=$position, game.racesCompleted=${game.getRacesCompleted()}")
+        racesCompleted++
+
+        // DECREMENT race credits immediately when race completes
+        // This is the ONLY place credits are decremented
+        raceCreditsManager.useOneRace()
+        val remaining = raceCreditsManager.getAvailableRaces()
+        android.util.Log.d("PixelWheelsActivity", "handleRaceComplete: position=$position, racesCompleted=$racesCompleted, creditsRemaining=$remaining")
 
         // Track best finishing position (lower is better)
         if (position < bestPosition) {

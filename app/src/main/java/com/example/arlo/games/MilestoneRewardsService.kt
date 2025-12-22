@@ -11,7 +11,8 @@ import com.example.arlo.data.ReadingStatsRepository
  * Checks and awards milestones based on reading progress.
  */
 class MilestoneRewardsService(
-    private val statsRepository: ReadingStatsRepository
+    private val statsRepository: ReadingStatsRepository,
+    private val raceCreditsManager: RaceCreditsManager? = null
 ) {
     companion object {
         private const val TAG = "MilestoneRewardsService"
@@ -116,10 +117,13 @@ class MilestoneRewardsService(
             }
         }
 
-        // Update racesEarned in daily stats
+        // Update racesEarned in daily stats and sync to SharedPreferences
         if (totalRacesAwarded > 0) {
             val todayStats = statsRepository.getTodayStats()
-            statsRepository.claimGameReward(todayStats.racesEarned + totalRacesAwarded)
+            val newRacesEarned = todayStats.racesEarned + totalRacesAwarded
+            statsRepository.claimGameReward(newRacesEarned)
+            // Sync to SharedPreferences (single source of truth for PixelWheels)
+            raceCreditsManager?.syncFromDatabase(newRacesEarned, todayStats.racesUsed)
         }
 
         return MilestoneCheckResult(earnedMilestones, totalRacesAwarded)
@@ -164,9 +168,11 @@ class MilestoneRewardsService(
         statsRepository.claimMilestone(MilestoneType.PAGE, milestoneId, racesToAward)
         statsRepository.updateMilestoneRaceSources(racesFromPages = racesToAward)
 
-        // Update racesEarned
+        // Update racesEarned and sync to SharedPreferences
         val todayStats = statsRepository.getTodayStats()
-        statsRepository.claimGameReward(todayStats.racesEarned + racesToAward)
+        val newRacesEarned = todayStats.racesEarned + racesToAward
+        statsRepository.claimGameReward(newRacesEarned)
+        raceCreditsManager?.syncFromDatabase(newRacesEarned, todayStats.racesUsed)
 
         Log.d(TAG, "Awarded PAGE completion milestone for page $pageId: $racesToAward races")
 
@@ -217,9 +223,11 @@ class MilestoneRewardsService(
         statsRepository.claimMilestone(MilestoneType.CHAPTER, milestoneId, racesToAward)
         statsRepository.updateMilestoneRaceSources(racesFromChapters = racesToAward)
 
-        // Update racesEarned
+        // Update racesEarned and sync to SharedPreferences
         val todayStats = statsRepository.getTodayStats()
-        statsRepository.claimGameReward(todayStats.racesEarned + racesToAward)
+        val newRacesEarned = todayStats.racesEarned + racesToAward
+        statsRepository.claimGameReward(newRacesEarned)
+        raceCreditsManager?.syncFromDatabase(newRacesEarned, todayStats.racesUsed)
 
         Log.d(TAG, "Awarded CHAPTER completion milestone for '$chapterTitle': $racesToAward races")
 
@@ -269,9 +277,11 @@ class MilestoneRewardsService(
         statsRepository.claimMilestone(MilestoneType.BOOK, milestoneId, racesToAward)
         statsRepository.updateMilestoneRaceSources(racesFromBooks = racesToAward)
 
-        // Update racesEarned
+        // Update racesEarned and sync to SharedPreferences
         val todayStats = statsRepository.getTodayStats()
-        statsRepository.claimGameReward(todayStats.racesEarned + racesToAward)
+        val newRacesEarned = todayStats.racesEarned + racesToAward
+        statsRepository.claimGameReward(newRacesEarned)
+        raceCreditsManager?.syncFromDatabase(newRacesEarned, todayStats.racesUsed)
 
         Log.d(TAG, "Awarded BOOK completion milestone for book $bookId: $racesToAward races")
 

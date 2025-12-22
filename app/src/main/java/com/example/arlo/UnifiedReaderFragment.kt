@@ -28,6 +28,7 @@ import com.example.arlo.games.GameRewardsManager
 import com.example.arlo.games.GameRewardState
 import com.example.arlo.games.GameSession
 import com.example.arlo.games.MissedStarsDialogFragment
+import com.example.arlo.games.RaceCreditsManager
 import com.example.arlo.games.RaceRewardsDialogFragment
 import com.example.arlo.games.pixelwheels.PixelWheelsActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -58,6 +59,7 @@ class UnifiedReaderFragment : Fragment() {
 
     // Game rewards manager
     private lateinit var gameRewardsManager: GameRewardsManager
+    private lateinit var raceCreditsManager: RaceCreditsManager
 
     // Loading dot animations
     private var dotAnimation1: Animation? = null
@@ -100,9 +102,10 @@ class UnifiedReaderFragment : Fragment() {
 
         viewModel = ViewModelProvider(this)[UnifiedReaderViewModel::class.java]
 
-        // Initialize game rewards manager
+        // Initialize game rewards manager and race credits
         val app = requireActivity().application as ArloApplication
         gameRewardsManager = GameRewardsManager(app.statsRepository)
+        raceCreditsManager = app.raceCreditsManager
 
         setupUI()
         observeState()
@@ -1012,74 +1015,62 @@ class UnifiedReaderFragment : Fragment() {
 
     /**
      * Update the games button visibility and badge count based on available races.
+     * Uses RaceCreditsManager as the single source of truth.
      */
     private fun updateGamesButton() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            val rewardState = gameRewardsManager.checkGameRewardEligibility()
-            val availableRaces = when (rewardState) {
-                is GameRewardState.NewRewardAvailable -> rewardState.racesEarned
-                is GameRewardState.RacesAvailable -> rewardState.racesRemaining
-                is GameRewardState.NoRewardsAvailable -> 0
-            }
+        // Read from SharedPreferences (single source of truth)
+        val availableRaces = raceCreditsManager.getAvailableRaces()
 
-            if (availableRaces > 0) {
-                binding.gamesContainer.visibility = View.VISIBLE
-                binding.tvGamesCount.text = availableRaces.toString()
+        if (availableRaces > 0) {
+            binding.gamesContainer.visibility = View.VISIBLE
+            binding.tvGamesCount.text = availableRaces.toString()
 
-                // Animate when new races are earned
-                if (availableRaces > lastAvailableRaces && lastAvailableRaces >= 0) {
-                    val steeringWheelSpin = AnimationUtils.loadAnimation(requireContext(), R.anim.steering_wheel_spin)
-                    binding.btnGames.startAnimation(steeringWheelSpin)
-                }
-                lastAvailableRaces = availableRaces
-            } else {
-                binding.gamesContainer.visibility = View.GONE
-                lastAvailableRaces = 0
+            // Animate when new races are earned
+            if (availableRaces > lastAvailableRaces && lastAvailableRaces >= 0) {
+                val steeringWheelSpin = AnimationUtils.loadAnimation(requireContext(), R.anim.steering_wheel_spin)
+                binding.btnGames.startAnimation(steeringWheelSpin)
             }
+            lastAvailableRaces = availableRaces
+        } else {
+            binding.gamesContainer.visibility = View.GONE
+            lastAvailableRaces = 0
         }
     }
 
     /**
      * Show the race rewards dialog.
+     * Uses RaceCreditsManager as the single source of truth.
      */
     private fun showRaceRewardsDialog() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            val rewardState = gameRewardsManager.checkGameRewardEligibility()
-            val availableRaces = when (rewardState) {
-                is GameRewardState.NewRewardAvailable -> rewardState.racesEarned
-                is GameRewardState.RacesAvailable -> rewardState.racesRemaining
-                is GameRewardState.NoRewardsAvailable -> 0
-            }
+        // Read from SharedPreferences (single source of truth)
+        val availableRaces = raceCreditsManager.getAvailableRaces()
 
-            viewModel.stopReading()
+        viewModel.stopReading()
 
-            val dialog = RaceRewardsDialogFragment.newInstance(availableRaces)
-            dialog.setOnStartRacingListener { races ->
-                startRacing(races)
-            }
-            dialog.setOnContinueReadingListener {
-                // Just dismiss - user wants to keep reading
-            }
-            dialog.show(parentFragmentManager, RaceRewardsDialogFragment.TAG)
+        val dialog = RaceRewardsDialogFragment.newInstance(availableRaces)
+        dialog.setOnStartRacingListener { races ->
+            startRacing(races)
         }
+        dialog.setOnContinueReadingListener {
+            // Just dismiss - user wants to keep reading
+        }
+        dialog.show(parentFragmentManager, RaceRewardsDialogFragment.TAG)
     }
 
     /**
-     * Start a racing session with the given number of races.
+     * Start a racing session.
+     * PixelWheels reads available races from RaceCreditsManager (SharedPreferences).
      */
     private fun startRacing(races: Int) {
-        viewLifecycleOwner.lifecycleScope.launch {
-            val session = gameRewardsManager.claimReward()
-            if (session != null) {
-                // Launch PixelWheels activity with session
-                val intent = Intent(requireContext(), PixelWheelsActivity::class.java).apply {
-                    putExtra(PixelWheelsActivity.EXTRA_MAX_RACES, session.maxRaces)
-                    putExtra(PixelWheelsActivity.EXTRA_SESSION_ID, session.sessionId)
-                }
-                startActivity(intent)
-            } else {
-                Toast.makeText(requireContext(), "No races available", Toast.LENGTH_SHORT).show()
+        val availableRaces = raceCreditsManager.getAvailableRaces()
+        if (availableRaces > 0) {
+            // Launch PixelWheels - it will read races from SharedPreferences
+            val intent = Intent(requireContext(), PixelWheelsActivity::class.java).apply {
+                putExtra(PixelWheelsActivity.EXTRA_SESSION_ID, System.currentTimeMillis().toString())
             }
+            startActivity(intent)
+        } else {
+            Toast.makeText(requireContext(), "No races available", Toast.LENGTH_SHORT).show()
         }
     }
 
