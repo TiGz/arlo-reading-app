@@ -108,7 +108,10 @@ class PixelWheelsActivity : AndroidApplication() {
     }
 
     private fun handleRaceComplete(position: Int) {
-        racesCompleted++
+        // Note: RaceLimitedPwGame tracks racesCompleted internally
+        // We sync from it when finishing to avoid double-counting
+        android.util.Log.d("PixelWheelsActivity", "handleRaceComplete: position=$position, game.racesCompleted=${game.getRacesCompleted()}")
+
         // Track best finishing position (lower is better)
         if (position < bestPosition) {
             bestPosition = position
@@ -117,8 +120,12 @@ class PixelWheelsActivity : AndroidApplication() {
     }
 
     private fun finishWithResult() {
+        // Get the authoritative race count from the game
+        val completedRaces = if (::game.isInitialized) game.getRacesCompleted() else racesCompleted
+        android.util.Log.d("PixelWheelsActivity", "finishWithResult: completedRaces=$completedRaces, bestPosition=$bestPosition")
+
         val resultIntent = Intent().apply {
-            putExtra(RESULT_RACES_COMPLETED, racesCompleted)
+            putExtra(RESULT_RACES_COMPLETED, completedRaces)
             putExtra(RESULT_BEST_POSITION, if (bestPosition == Int.MAX_VALUE) 1 else bestPosition)
             putExtra(RESULT_SESSION_ID, sessionId)
             putExtra(RESULT_STARTED_AT, startedAt)
@@ -137,7 +144,8 @@ class PixelWheelsActivity : AndroidApplication() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         // Preserve race count in case Android kills the process
-        outState.putInt(STATE_RACES_COMPLETED, racesCompleted)
+        val completedRaces = if (::game.isInitialized) game.getRacesCompleted() else racesCompleted
+        outState.putInt(STATE_RACES_COMPLETED, completedRaces)
         outState.putInt(STATE_BEST_POSITION, bestPosition)
         outState.putLong(STATE_STARTED_AT, startedAt)
     }
