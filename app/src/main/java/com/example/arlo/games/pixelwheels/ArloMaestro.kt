@@ -59,6 +59,24 @@ class ArloMaestro(
 
     private fun createSelectTrackScreen(): Screen {
         android.util.Log.d("ArloMaestro", "createSelectTrackScreen()")
+
+        // ARLO MODIFICATION - Defensive: If somehow we get here with 0 races, exit immediately
+        if (currentRaceCount() >= maxRaces) {
+            android.util.Log.w("ArloMaestro", "createSelectTrackScreen called with no races remaining - exiting")
+            stopEnoughInputChecker()
+            game.showMainMenu()
+            // Return a dummy screen that will be immediately replaced by the exit
+            return object : Screen {
+                override fun show() {}
+                override fun render(delta: Float) {}
+                override fun resize(width: Int, height: Int) {}
+                override fun pause() {}
+                override fun resume() {}
+                override fun hide() {}
+                override fun dispose() {}
+            }
+        }
+
         val listener = object : SelectTrackScreen.Listener {
             override fun onBackPressed() {
                 android.util.Log.d("ArloMaestro", "SelectTrackScreen.onBackPressed - exiting game")
@@ -138,6 +156,14 @@ class ArloMaestro(
         }
 
         android.util.Log.d("ArloMaestro", "Creating RaceScreen instance")
-        return RaceScreen(game, listener, gameInfo)
+        val raceScreen = RaceScreen(game, listener, gameInfo)
+
+        // ARLO MODIFICATION - Update HUD with race counter
+        raceScreen.playerHud?.setRaceLimits(
+            currentRaceCount() + 1,  // 1-indexed for display (Race 1 of 3)
+            maxRaces
+        )
+
+        return raceScreen
     }
 }

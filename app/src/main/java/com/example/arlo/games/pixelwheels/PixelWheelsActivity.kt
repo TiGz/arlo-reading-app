@@ -58,6 +58,14 @@ class PixelWheelsActivity : AndroidApplication() {
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
         startedAt = System.currentTimeMillis()
 
+        // Restore state if process was killed (e.g., system reclaimed memory)
+        savedInstanceState?.let { bundle ->
+            racesCompleted = bundle.getInt(STATE_RACES_COMPLETED, 0)
+            bestPosition = bundle.getInt(STATE_BEST_POSITION, Int.MAX_VALUE)
+            startedAt = bundle.getLong(STATE_STARTED_AT, startedAt)
+            android.util.Log.d("PixelWheelsActivity", "Restored state: racesCompleted=$racesCompleted")
+        }
+
         android.util.Log.d("PixelWheelsActivity", "maxRaces=$maxRaces, sessionId=$sessionId")
 
         val config = AndroidApplicationConfiguration().apply {
@@ -126,6 +134,14 @@ class PixelWheelsActivity : AndroidApplication() {
         finishWithResult()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Preserve race count in case Android kills the process
+        outState.putInt(STATE_RACES_COMPLETED, racesCompleted)
+        outState.putInt(STATE_BEST_POSITION, bestPosition)
+        outState.putLong(STATE_STARTED_AT, startedAt)
+    }
+
     companion object {
         const val EXTRA_MAX_RACES = "max_races"
         const val EXTRA_SESSION_ID = "session_id"
@@ -134,6 +150,11 @@ class PixelWheelsActivity : AndroidApplication() {
         const val RESULT_SESSION_ID = "session_id"
         const val RESULT_STARTED_AT = "started_at"
         const val RESULT_ENDED_AT = "ended_at"
+
+        // State keys for savedInstanceState
+        private const val STATE_RACES_COMPLETED = "state_races_completed"
+        private const val STATE_BEST_POSITION = "state_best_position"
+        private const val STATE_STARTED_AT = "state_started_at"
 
         fun createIntent(context: Context, session: GameSession): Intent {
             return Intent(context, PixelWheelsActivity::class.java).apply {

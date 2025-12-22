@@ -22,6 +22,7 @@ import static com.agateau.translations.Translator.tr;
 
 import com.agateau.pixelwheels.PwGame;
 import com.agateau.pixelwheels.PwRefreshHelper;
+import com.agateau.pixelwheels.RaceLimitedGame;
 import com.agateau.pixelwheels.gamesetup.ChampionshipMaestro;
 import com.agateau.pixelwheels.gamesetup.GameInfo;
 import com.agateau.pixelwheels.racer.LapPositionComponent;
@@ -273,7 +274,9 @@ public class FinishedOverlay extends Overlay {
 
     private Actor createTablePage(TableType tableType) {
         UiBuilder builder = new UiBuilder(mGame.getAssets().ui.atlas, mGame.getAssets().ui.skin);
-        if (!isChampionship()) {
+        // ARLO MODIFICATION - Hide RESTART button for race-limited sessions
+        // (users should not be able to restart after completing a race)
+        if (!isChampionship() && !(mGame instanceof RaceLimitedGame)) {
             builder.defineVariable("quickRace");
         }
         boolean showCongratsCar =
@@ -372,7 +375,9 @@ public class FinishedOverlay extends Overlay {
     }
 
     private void fillMenu(UiBuilder builder) {
-        if (!isChampionship()) {
+        // ARLO MODIFICATION - Only add restart listener if quickRace was defined
+        // (which excludes RaceLimitedGame where we hide restart after race completion)
+        if (!isChampionship() && !(mGame instanceof RaceLimitedGame)) {
             builder.getActor("restartButton")
                     .addListener(
                             new MenuItemListener() {
@@ -382,18 +387,37 @@ public class FinishedOverlay extends Overlay {
                                 }
                             });
         }
-        builder.getActor("continueButton")
-                .addListener(
-                        new MenuItemListener() {
-                            @Override
-                            public void triggered() {
-                                if (mPageCreators.isEmpty()) {
-                                    mRaceScreen.getListener().onNextTrackPressed();
-                                } else {
-                                    showNextPage();
-                                }
-                            }
-                        });
+
+        Actor continueButton = builder.getActor("continueButton");
+        continueButton.addListener(
+                new MenuItemListener() {
+                    @Override
+                    public void triggered() {
+                        if (mPageCreators.isEmpty()) {
+                            mRaceScreen.getListener().onNextTrackPressed();
+                        } else {
+                            showNextPage();
+                        }
+                    }
+                });
+
+        // ARLO MODIFICATION - Customize button text for race-limited sessions
+        if (mGame instanceof RaceLimitedGame) {
+            RaceLimitedGame arloGame = (RaceLimitedGame) mGame;
+            // Find the label inside the button to change the text
+            if (continueButton instanceof com.agateau.ui.menu.ButtonMenuItem) {
+                com.agateau.ui.menu.ButtonMenuItem buttonItem =
+                        (com.agateau.ui.menu.ButtonMenuItem) continueButton;
+                // Note: getRacesRemaining() doesn't include THIS race yet (it's counted on button press)
+                // So we subtract 1 to show accurate count after this race completes
+                int racesAfterThis = arloGame.getRacesRemaining() - 1;
+                if (racesAfterThis > 0) {
+                    buttonItem.setText("NEXT RACE (" + racesAfterThis + " left)");
+                } else {
+                    buttonItem.setText("BACK TO READING");
+                }
+            }
+        }
     }
 
     private TableRowCreator getRowCreatorForTable(TableType tableType) {

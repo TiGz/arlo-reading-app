@@ -20,6 +20,7 @@ package com.agateau.pixelwheels.racescreen;
 
 import com.agateau.pixelwheels.PwGame;
 import com.agateau.pixelwheels.PwRefreshHelper;
+import com.agateau.pixelwheels.RaceLimitedGame;
 import com.agateau.pixelwheels.gamesetup.GameInfo;
 import com.agateau.ui.uibuilder.UiBuilder;
 import com.agateau.utils.FileUtils;
@@ -47,7 +48,12 @@ public class PauseOverlay extends Overlay {
     private Actor createContent() {
         UiBuilder builder = new UiBuilder(mGame.getAssets().atlas, mGame.getAssets().ui.skin);
         boolean isQuickRace = mRaceScreen.getGameType() == GameInfo.GameType.QUICK_RACE;
-        if (isQuickRace) {
+        boolean isRaceLimited = mGame instanceof RaceLimitedGame;
+
+        // ARLO MODIFICATION - Allow restart only during first lap in race-limited mode
+        // This prevents frustration from bad starts while still enforcing race limits
+        boolean allowRestart = isQuickRace && (!isRaceLimited || mRaceScreen.isOnFirstLap());
+        if (allowRestart) {
             builder.defineVariable("quickRace");
         }
         Actor content = builder.build(FileUtils.assets("screens/pauseoverlay.gdxui"));
@@ -60,7 +66,8 @@ public class PauseOverlay extends Overlay {
                                 mRaceScreen.resumeRace();
                             }
                         });
-        if (isQuickRace) {
+        // ARLO MODIFICATION - Only add restart listener when restart is allowed
+        if (allowRestart) {
             builder.getActor("restartButton")
                     .addListener(
                             new ChangeListener() {

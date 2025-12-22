@@ -19,6 +19,7 @@
 package com.example.arlo.games.pixelwheels
 
 import com.agateau.pixelwheels.PwGame
+import com.agateau.pixelwheels.RaceLimitedGame
 
 /**
  * Modified PwGame that:
@@ -34,7 +35,7 @@ class RaceLimitedPwGame(
     private val onRaceComplete: (position: Int) -> Unit,
     private val onAllRacesComplete: () -> Unit,
     private val onGameExit: () -> Unit
-) : PwGame() {
+) : PwGame(), RaceLimitedGame {
 
     private var racesCompleted = 0
     private var maestro: ArloMaestro? = null
@@ -90,4 +91,8 @@ class RaceLimitedPwGame(
     }
 
     fun getRacesCompleted(): Int = racesCompleted
+
+    override fun getRacesRemaining(): Int = (maxRaces - racesCompleted).coerceAtLeast(0)
+
+    override fun hasRacesRemaining(): Boolean = racesCompleted < maxRaces
 }

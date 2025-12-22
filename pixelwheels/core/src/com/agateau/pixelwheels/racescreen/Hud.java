@@ -27,6 +27,7 @@ import com.agateau.utils.PlatformUtils;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
+import com.badlogic.gdx.scenes.scene2d.ui.Label;
 
 /** Hud showing player info during race */
 public class Hud {
@@ -41,6 +42,9 @@ public class Hud {
     private AnchorGroup mInputUiContainer;
     private float mZoom;
     private HudButton mPauseButton;
+
+    // ARLO MODIFICATION - Race counter for race-limited sessions
+    private Label mRaceLabel;
 
     public Hud(PwGame game, Stage stage) {
         mGame = game;
@@ -121,5 +125,17 @@ public class Hud {
     public void addPauseButton(HudButton button) {
         mPauseButton = button;
         mRoot.addPositionRule(button, Anchor.TOP_LEFT, mRoot, Anchor.TOP_LEFT);
+    }
+
+    // ARLO MODIFICATION - Set race limits display for race-limited sessions
+    public void setRaceLimits(int current, int max) {
+        if (max > 0) {
+            if (mRaceLabel == null) {
+                mRaceLabel = new Label("", mGame.getAssets().ui.skin, "hud");
+                mRoot.addActor(mRaceLabel);
+                mRoot.addPositionRule(mRaceLabel, Anchor.TOP_CENTER, mRoot, Anchor.TOP_CENTER, 0, -10);
+            }
+            mRaceLabel.setText("Race " + current + " of " + max);
+        }
     }
 }

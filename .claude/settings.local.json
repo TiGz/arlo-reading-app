@@ -53,7 +53,19 @@
       "Bash(app/src/main/res/values/themes.xml )",
       "Bash(plans/pixelwheels-integration.md)",
       "Bash(unzip:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git check-ignore:*)",
+      "Skill(compound-engineering:workflows:review)",
+      "Skill(compound-engineering:workflows:review:*)",
+      "Bash(grep:*)",
+      "Bash(git -C /Users/adam/dev/personal/arlo-reading-app log --oneline --all --grep=\"pixelwheels\\\\|PixelWheels\" -i)",
+      "Bash(git -C /Users/adam/dev/personal/arlo-reading-app log --oneline --all)",
+      "Bash(find:*)",
+      "Bash(git -C /Users/adam/dev/personal/arlo-reading-app diff pixelwheels/core/src/com/agateau/pixelwheels/racescreen/Hud.java)"
     ]
   }
 }

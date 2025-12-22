@@ -417,4 +417,18 @@ public class RaceScreen extends ScreenAdapter {
     public Listener getListener() {
         return mListener;
     }
+
+    // ARLO MODIFICATION - Get the first player's HUD for race counter display
+    public Hud getPlayerHud() {
+        if (mRacerHudControllers.size > 0) {
+            return mRacerHudControllers.get(0).getHud();
+        }
+        return null;
+    }
+
+    // ARLO MODIFICATION - Check if player is still on first lap (for restart logic)
+    public boolean isOnFirstLap() {
+        Racer playerRacer = mGameWorld.getPlayerRacer(0);
+        return playerRacer.getLapPositionComponent().getLapCount() <= 1;
+    }
 }

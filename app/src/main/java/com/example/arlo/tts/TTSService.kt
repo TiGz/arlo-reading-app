@@ -34,6 +34,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     private var onRangeStart: ((Int, Int) -> Unit)? = null
     private var onSpeechDone: (() -> Unit)? = null
     private var pendingText: String? = null
+    private var pendingCallback: (() -> Unit)? = null
     private var currentEngineIndex = 0
     private var initializationAttempts = 0
     private var currentVoiceId: String? = null
@@ -157,10 +158,16 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
                 // Apply saved speech rate
                 tts?.setSpeechRate(speechRate)
 
-                // If there was pending text, speak it now
+                // If there was pending text, speak it now (with callback if present)
                 pendingText?.let { text ->
+                    val callback = pendingCallback
                     pendingText = null
-                    speak(text)
+                    pendingCallback = null
+                    if (callback != null) {
+                        speak(text, callback)
+                    } else {
+                        speak(text)
+                    }
                 }
             }
         } else {
@@ -237,8 +244,9 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
             val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
             Log.d(TAG, "speak() with callback returned: $result")
         } else {
-            Log.w(TAG, "TTS not initialized yet for callback speak")
+            Log.w(TAG, "TTS not initialized yet for callback speak, queuing with callback")
             pendingText = text
+            pendingCallback = onComplete
         }
     }
 

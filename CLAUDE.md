@@ -13,6 +13,7 @@ Arlo is an Android reading assistance app that helps users capture book pages wi
 - Collaborative reading mode (TTS reads, child speaks last word)
 - Animated word-by-word display with scale/color transitions
 - **Gamification system** with stars, streaks, achievements, and weekly goals
+- **PixelWheels racing game** as reading reward (race-limited sessions)
 - Kid mode with simplified controls and locked settings
 - Phonetic speech matching (Apache Commons Codec)
 - Speech recognition with Google Speech Services
@@ -76,6 +77,19 @@ app/src/main/java/com/example/arlo/
 │   ├── AnimatedSentenceView.kt  # FlexboxLayout displaying animated words
 │   ├── WordView.kt              # Individual word with scale/color animations
 │   └── WordHighlightState.kt    # Animation state enum
+├── games/
+│   ├── GameRewardsManager.kt    # Reward eligibility and race calculation
+│   ├── GameSession.kt           # Session config (maxRaces, sessionId)
+│   ├── GameSessionResult.kt     # Result data class
+│   ├── GameRewardState.kt       # Sealed class for reward states
+│   ├── GameUnlockDialog.kt      # "You earned X races!" dialog
+│   ├── RaceCompleteDialog.kt    # Post-session celebration
+│   ├── ConfettiView.kt          # Celebration confetti animation
+│   └── pixelwheels/
+│       ├── PixelWheelsActivity.kt  # AndroidApplication host
+│       ├── PixelWheelsProvider.kt  # GameProvider implementation
+│       ├── RaceLimitedPwGame.kt    # Modified PwGame (race limits)
+│       └── ArloMaestro.kt          # Race orchestrator
 ├── ApiKeyManager.kt          # EncryptedSharedPreferences for API key
 ├── MainActivity.kt           # Single Activity host with API key dialog
 ├── ArloApplication.kt        # App singleton with lazy init + statsRepository
@@ -430,3 +444,124 @@ This script reads `KOKORO_SERVER_URL` from `local.properties` and:
 
 - `res/raw/success_ping.mp3` - Correct answer feedback
 - `res/raw/error_buzz.mp3` - Wrong answer feedback
+
+## PixelWheels Racing Game Integration
+
+### Overview
+
+PixelWheels is an open-source LibGDX racing game integrated as a reward system. Children earn races by meeting reading goals, enforced through race-limited sessions.
+
+### Repository Structure
+
+- **Fork:** https://github.com/TiGz/pixelwheels
+- **Branch:** `arlo-integration`
+- **Upstream:** https://github.com/agateau/pixelwheels
+- **Integration:** Git subtree in `pixelwheels/` directory
+
+The fork contains pre-built game assets (map PNGs, sprite atlases, UI skins) so you don't need asset generation tools.
+
+### Architecture
+
+```
+app/src/main/java/com/example/arlo/games/
+├── GameRewardsManager.kt      # Reward eligibility + race calculation
+├── GameSession.kt             # Session config (maxRaces, sessionId)
+├── GameSessionResult.kt       # Result data (racesCompleted, bestPosition)
+├── GameRewardState.kt         # Sealed class for reward states
+├── GameUnlockDialog.kt        # "You earned X races!" dialog
+├── RaceCompleteDialog.kt      # Post-session celebration
+├── ConfettiView.kt            # Celebration confetti animation
+└── pixelwheels/
+    ├── PixelWheelsActivity.kt # AndroidApplication host
+    ├── PixelWheelsProvider.kt # GameProvider implementation
+    ├── RaceLimitedPwGame.kt   # Modified PwGame (skips main menu)
+    └── ArloMaestro.kt         # Race orchestrator (enforces limits)
+```
+
+### Key Classes
+
+**RaceLimitedPwGame** - Extends `PwGame` to:
+- Skip main menu, start quick race directly
+- Track completed races against limit
+- Trigger callbacks on race complete / all races done
+- Block access to main menu (showMainMenu → exit)
+
+**ArloMaestro** - Custom `Maestro` that:
+- Shows track selection → vehicle selection → race flow
+- Counts races toward session limit
+- Exits to Arlo when limit reached
+- Prevents navigation to main menu
+
+**GameRewardsManager** - Calculates rewards:
+```kotlin
+// Base: 1 race for meeting goal
+// +1 if exceeded goal by 50%
+// +1 if longest streak >= 5
+// Capped by parent's maxRacesPerDay (default 3)
+```
+
+### Game Flow
+
+1. Child meets daily reading goal
+2. `GameRewardsManager.checkGameRewardEligibility()` returns `NewRewardAvailable`
+3. `GameUnlockDialog` shows earned races with confetti
+4. `PixelWheelsActivity` launches with `GameSession` extras
+5. `RaceLimitedPwGame` starts `ArloMaestro`
+6. After each race, maestro checks limit:
+   - If more races allowed → track selection
+   - If limit reached → exit to Arlo
+7. `RaceCompleteDialog` shows session results
+
+### Assets
+
+Pre-built assets in `pixelwheels/android/assets/`:
+- `maps/*.png` - Map tileset textures (city, country, snow)
+- `sprites/sprites.atlas` + `sprites.png` - Sprite texture atlas
+- `ui/uiskin.atlas` + `uiskin.png` - UI skin
+
+These are normally generated from source but committed to the fork for convenience.
+
+### Native Libraries
+
+LibGDX native libraries in `app/libs/`:
+- `arm64-v8a/` - 64-bit ARM (most modern devices)
+- `armeabi-v7a/` - 32-bit ARM (older devices)
+
+Includes: `libgdx.so`, `libgdx-box2d.so`
+
+### Manifest Entry
+
+```xml
+<activity
+    android:name=".games.pixelwheels.PixelWheelsActivity"
+    android:configChanges="..."
+    android:screenOrientation="landscape"
+    android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+```
+
+### Parent Settings
+
+`ParentSettings` controls game rewards:
+- `gameRewardsEnabled: Boolean` - Master toggle
+- `maxRacesPerDay: Int` - Cap on daily races (default 3)
+- `dailyPointsTarget: Int` - Reading goal threshold
+
+### DailyStats Tracking
+
+Game-related fields in `DailyStats`:
+- `goalMet: Boolean` - Whether reading goal was achieved
+- `gameRewardClaimed: Boolean` - Whether reward was claimed today
+- `racesEarned: Int` - Races calculated for today
+- `racesUsed: Int` - Races already played today
+
+### Debugging
+
+Check game logs:
+```bash
+adb logcat | grep -E "(PixelWheels|ArloMaestro|RaceLimited|GameRewards)"
+```
+
+Common issues:
+- **FileNotFoundException for maps/*.png** - Assets not in fork, re-extract from APK
+- **Game exits immediately** - Check `isInitialized` flag in `RaceLimitedPwGame`
+- **Can't select vehicle** - Ensure assets directory structure matches expected paths
