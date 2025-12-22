@@ -183,6 +183,17 @@ class BookRepository(private val bookDao: BookDao) {
         return bookDao.getCompletedPagesForBookSync(bookId)
     }
 
+    /**
+     * Get the last sentence text from the most recent completed page.
+     * Used for page capture guidance - helps kids find the right page.
+     */
+    suspend fun getLastCompletedPageLastSentence(bookId: Long): String? {
+        val pages = bookDao.getCompletedPagesForBookSync(bookId)
+        val lastPage = pages.lastOrNull() ?: return null
+        val sentences = parseSentences(lastPage.sentencesJson)
+        return sentences.lastOrNull()?.text
+    }
+
     fun getPendingPageCount(bookId: Long): Flow<Int> {
         return bookDao.getPendingPageCount(bookId)
     }

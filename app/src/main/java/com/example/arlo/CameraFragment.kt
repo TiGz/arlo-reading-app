@@ -28,6 +28,7 @@ import coil.load
 import com.example.arlo.databinding.FragmentCameraBinding
 import com.example.arlo.ocr.OCRQueueManager
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -56,6 +57,35 @@ class CameraFragment : Fragment() {
 
     // Expected next page number (from OCR detection)
     private var expectedNextPage: Int? = null
+
+    // Guidance state for kid-friendly page capture hints
+    private var guidanceState: CaptureGuidanceState = CaptureGuidanceState.FirstPage
+    private var lastSpokenInstruction: String? = null
+
+    /**
+     * Sealed class representing the different guidance states for page capture.
+     * Helps kids understand what page to capture next.
+     */
+    sealed class CaptureGuidanceState {
+        /** No pages captured yet */
+        object FirstPage : CaptureGuidanceState()
+
+        /** Have pages, confident about next page number */
+        data class KnownNextPage(
+            val pageNumber: Int,
+            val contextSnippet: String?
+        ) : CaptureGuidanceState()
+
+        /** Have pages, but queue not empty or no confidence in page numbers */
+        data class UnknownNextPage(
+            val contextSnippet: String?
+        ) : CaptureGuidanceState()
+
+        /** Recapture mode */
+        data class RecapturePage(
+            val pageNumber: Int
+        ) : CaptureGuidanceState()
+    }
 
     // OCR Queue
     private val ocrQueueManager: OCRQueueManager by lazy {
@@ -130,10 +160,13 @@ class CameraFragment : Fragment() {
         setupUI()
         updateUIForStep()
 
-        // Speak the initial instruction
-        view.postDelayed({
-            speakInstruction()
-        }, 500)
+        // Speak the initial instruction for COVER step only
+        // PAGE step uses the guidance system which auto-speaks
+        if (captureStep == CaptureStep.COVER) {
+            view.postDelayed({
+                speakInstruction()
+            }, 500)
+        }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
@@ -222,6 +255,11 @@ class CameraFragment : Fragment() {
                     } else {
                         binding.chipQueueStatus.visibility = View.GONE
                     }
+
+                    // Update guidance when queue empties (may reveal page numbers)
+                    if (captureStep == CaptureStep.PAGE) {
+                        computeGuidanceState()
+                    }
                 }
             }
         }
@@ -277,9 +315,9 @@ class CameraFragment : Fragment() {
         }
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
 
-        // Update instruction if we're still on PAGE step
+        // Recalculate guidance state with new data
         if (captureStep == CaptureStep.PAGE) {
-            updateUIForStep()
+            computeGuidanceState()
         }
     }
 
@@ -296,8 +334,7 @@ class CameraFragment : Fragment() {
             .setPositiveButton("Recapture") { _, _ ->
                 // Set expected page to the low-confidence one for recapture
                 expectedNextPage = state.pageNumber
-                updateUIForStep()
-                speakInstruction()
+                updateUIForStep()  // This calls computeGuidanceState() which auto-speaks
             }
             .setNegativeButton("Keep It", null)
             .show()
@@ -316,6 +353,7 @@ class CameraFragment : Fragment() {
                 binding.tvInstructionTitle.text = "Step 1"
                 binding.tvInstruction.text = "Take a photo of the cover"
                 binding.tvInstructionHint.text = "This will be used as your book's thumbnail"
+                binding.contextSnippetContainer.visibility = View.GONE
                 binding.btnSkip.visibility = View.GONE
             }
             CaptureStep.COVER_PREVIEW -> {
@@ -338,21 +376,8 @@ class CameraFragment : Fragment() {
                 binding.imageCaptureButton.visibility = View.VISIBLE
                 binding.btnProcessWithAI.text = "Process with AI"
 
-                // Show expected page number if known
-                val pageInstruction = when {
-                    mode == MODE_RECAPTURE && expectedNextPage != null -> "Recapture page $expectedNextPage"
-                    expectedNextPage != null -> "Capture page $expectedNextPage"
-                    mode == MODE_NEW_BOOK -> "Capture the first page"
-                    else -> "Capture the next page"
-                }
-
-                binding.tvInstructionTitle.text = when {
-                    mode == MODE_RECAPTURE -> "Recapture"
-                    mode == MODE_NEW_BOOK && expectedNextPage == null -> "Step 2"
-                    else -> "Add Page"
-                }
-                binding.tvInstruction.text = pageInstruction
-                binding.tvInstructionHint.text = "Position the page clearly in the frame"
+                // Use new guidance state system for kid-friendly instructions
+                computeGuidanceState()
 
                 // Hide skip/done button in recapture mode, show otherwise
                 binding.btnSkip.visibility = if (mode == MODE_RECAPTURE) View.GONE else View.VISIBLE
@@ -402,6 +427,195 @@ class CameraFragment : Fragment() {
         tts.stop()
         binding.ivSpeaker.visibility = View.GONE
     }
+
+    // ==================== Guidance State Logic ====================
+
+    /**
+     * Extract last ~6 words from text with ellipsis prefix.
+     * Helps kids find the right page by showing context.
+     */
+    private fun extractContextSnippet(lastSentenceText: String?): String? {
+        if (lastSentenceText.isNullOrBlank()) return null
+
+        val words = lastSentenceText.trim().split("\\s+".toRegex())
+        val snippetWords = words.takeLast(6)
+
+        return "..." + snippetWords.joinToString(" ")
+    }
+
+    /**
+     * Compute the current guidance state based on book/queue state.
+     * Updates the UI and speaks the instruction if changed.
+     */
+    private fun computeGuidanceState() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val app = requireActivity().application as ArloApplication
+
+            // Recapture mode takes priority
+            if (mode == MODE_RECAPTURE && recaptureExpectedPageNumber > 0) {
+                guidanceState = CaptureGuidanceState.RecapturePage(recaptureExpectedPageNumber)
+                updateGuidanceUI()
+                return@launch
+            }
+
+            // Get page count for current book
+            val pageCount = if (currentBookId != -1L) {
+                app.repository.getPageCount(currentBookId)
+            } else 0
+
+            // No pages yet
+            if (pageCount == 0) {
+                guidanceState = CaptureGuidanceState.FirstPage
+                updateGuidanceUI()
+                return@launch
+            }
+
+            // Get last sentence for context snippet
+            val lastSentence = app.repository.getLastCompletedPageLastSentence(currentBookId)
+            val contextSnippet = extractContextSnippet(lastSentence)
+
+            // Check queue status - don't show page number if queue has pending items
+            val pendingCount = ocrQueueManager.pendingPages.first().size
+
+            // Determine if we have confident page number prediction
+            val hasConfidentPageNumber = expectedNextPage != null && pendingCount == 0
+
+            guidanceState = if (hasConfidentPageNumber) {
+                CaptureGuidanceState.KnownNextPage(
+                    pageNumber = expectedNextPage!!,
+                    contextSnippet = contextSnippet
+                )
+            } else {
+                CaptureGuidanceState.UnknownNextPage(
+                    contextSnippet = contextSnippet
+                )
+            }
+
+            updateGuidanceUI()
+        }
+    }
+
+    /**
+     * Update the UI based on current guidance state.
+     */
+    private fun updateGuidanceUI() {
+        when (val state = guidanceState) {
+            is CaptureGuidanceState.FirstPage -> {
+                binding.tvInstructionTitle.text = "Step 2"
+                binding.tvInstruction.text = "Capture the first page"
+                binding.tvInstructionHint.text = "Point the camera at page 1"
+                binding.contextSnippetContainer.visibility = View.GONE
+            }
+
+            is CaptureGuidanceState.KnownNextPage -> {
+                binding.tvInstructionTitle.text = "Add Page"
+                binding.tvInstruction.text = "Capture page ${state.pageNumber}"
+                binding.tvInstructionHint.text = "Position the page clearly in the frame"
+
+                // Show context snippet if available
+                if (state.contextSnippet != null) {
+                    binding.contextSnippetContainer.visibility = View.VISIBLE
+                    binding.tvContextSnippet.text = state.contextSnippet
+                } else {
+                    binding.contextSnippetContainer.visibility = View.GONE
+                }
+            }
+
+            is CaptureGuidanceState.UnknownNextPage -> {
+                binding.tvInstructionTitle.text = "Continue"
+                binding.tvInstruction.text = "Capture the next page"
+                binding.tvInstructionHint.text = "Position the page clearly in the frame"
+
+                // Show context snippet if available (helps even without page number)
+                if (state.contextSnippet != null) {
+                    binding.contextSnippetContainer.visibility = View.VISIBLE
+                    binding.tvContextSnippet.text = state.contextSnippet
+                } else {
+                    binding.contextSnippetContainer.visibility = View.GONE
+                }
+            }
+
+            is CaptureGuidanceState.RecapturePage -> {
+                binding.tvInstructionTitle.text = "Recapture"
+                binding.tvInstruction.text = "Recapture page ${state.pageNumber}"
+                binding.tvInstructionHint.text = "Try to get a clearer photo"
+                binding.contextSnippetContainer.visibility = View.GONE
+            }
+        }
+
+        // Auto-speak if instruction changed
+        autoSpeakIfChanged()
+    }
+
+    /**
+     * Speak the instruction if it has changed (debounced).
+     */
+    private fun autoSpeakIfChanged() {
+        val currentInstruction = binding.tvInstruction.text.toString()
+
+        // Skip if same instruction (debounce)
+        if (currentInstruction == lastSpokenInstruction) {
+            return
+        }
+
+        lastSpokenInstruction = currentInstruction
+
+        // Build spoken text (may differ from displayed text for clarity)
+        val spokenText = buildSpokenInstruction()
+        speakGuidance(spokenText)
+    }
+
+    /**
+     * Build a natural-sounding spoken instruction based on guidance state.
+     */
+    private fun buildSpokenInstruction(): String {
+        return when (val state = guidanceState) {
+            is CaptureGuidanceState.FirstPage -> {
+                "Capture the first page of your book"
+            }
+            is CaptureGuidanceState.KnownNextPage -> {
+                if (state.contextSnippet != null) {
+                    val cleanSnippet = state.contextSnippet.removePrefix("...")
+                    "Capture page ${state.pageNumber}. Look for the page after \"$cleanSnippet\""
+                } else {
+                    "Capture page ${state.pageNumber}"
+                }
+            }
+            is CaptureGuidanceState.UnknownNextPage -> {
+                if (state.contextSnippet != null) {
+                    val cleanSnippet = state.contextSnippet.removePrefix("...")
+                    "Capture the next page. Look for the page after \"$cleanSnippet\""
+                } else {
+                    "Capture the next page"
+                }
+            }
+            is CaptureGuidanceState.RecapturePage -> {
+                "Recapture page ${state.pageNumber}. Try to get a clearer photo."
+            }
+        }
+    }
+
+    /**
+     * Speak the guidance text via TTS.
+     */
+    private fun speakGuidance(text: String) {
+        val tts = (requireActivity().application as ArloApplication).ttsService
+
+        if (tts.isReady()) {
+            binding.ivSpeaker.visibility = View.VISIBLE
+            tts.speak(text)
+
+            // Hide speaker icon after estimated speech duration
+            val estimatedDurationMs = (text.length * 50L).coerceIn(2000L, 5000L)
+            binding.ivSpeaker.postDelayed({
+                if (_binding != null) {
+                    binding.ivSpeaker.visibility = View.GONE
+                }
+            }, estimatedDurationMs)
+        }
+    }
+
+    // ==================== End Guidance State Logic ====================
 
     private fun showLoading(message: String) {
         binding.loadingOverlay.visibility = View.VISIBLE
@@ -516,8 +730,7 @@ class CameraFragment : Fragment() {
 
                         // Move to page capture
                         captureStep = CaptureStep.PAGE
-                        updateUIForStep()
-                        speakInstruction()
+                        updateUIForStep()  // This calls computeGuidanceState() which auto-speaks
                     }
                 }
                 is CameraViewModel.OCRResult.Error -> {

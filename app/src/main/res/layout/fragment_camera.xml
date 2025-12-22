@@ -101,6 +101,43 @@
             android:textSize="22sp"
             android:textStyle="bold" />
 
+        <!-- Context snippet: shows last words from previous page -->
+        <LinearLayout
+            android:id="@+id/contextSnippetContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_context_snippet"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="10dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:id="@+id/ivBookIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Book context"
+                android:src="@drawable/ic_book"
+                app:tint="@color/accent_purple" />
+
+            <TextView
+                android:id="@+id/tvContextSnippet"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp"
+                android:textStyle="italic"
+                tools:text="...jumped over the" />
+
+        </LinearLayout>
+
         <TextView
             android:id="@+id/tvInstructionHint"
             android:layout_width="wrap_content"
