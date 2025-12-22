@@ -1009,7 +1009,7 @@
                                     android:layout_weight="1"
                                     android:layout_marginHorizontal="12dp"
                                     android:valueFrom="1"
-                                    android:valueTo="5"
+                                    android:valueTo="20"
                                     android:stepSize="1"
                                     app:haloColor="@color/switch_track_coral"
                                     app:thumbColor="@color/secondary"

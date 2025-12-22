@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#80000000">
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_margin="32dp"
+        app:cardBackgroundColor="@color/surface"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="28dp">
+
+            <!-- Header with steering wheel icon -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/ivSteeringWheel"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/ic_steering_wheel"
+                    app:tint="@color/secondary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:fontFamily="sans-serif-black"
+                    android:text="Race Time!"
+                    android:textColor="@color/secondary"
+                    android:textSize="24sp" />
+
+            </LinearLayout>
+
+            <!-- Race count display - Big and bold -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_race_count_bubble"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingHorizontal="28dp"
+                android:paddingVertical="16dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_game_racing"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:id="@+id/tvRaceCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:fontFamily="sans-serif-black"
+                    android:textColor="@color/white"
+                    android:textSize="52sp"
+                    tools:text="3" />
+
+                <TextView
+                    android:id="@+id/tvRaceLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    tools:text="races\nto go!" />
+
+            </LinearLayout>
+
+            <!-- Subtitle message -->
+            <TextView
+                android:id="@+id/tvSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:fontFamily="sans-serif"
+                android:gravity="center"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                tools:text="You earned these by reading today!" />
+
+            <!-- Start Racing Button - Big and inviting -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStartRacing"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_marginTop="24dp"
+                android:fontFamily="sans-serif-black"
+                android:text="Start Racing!"
+                android:textAllCaps="false"
+                android:textSize="20sp"
+                app:backgroundTint="@color/secondary"
+                app:cornerRadius="32dp"
+                app:icon="@drawable/ic_game_racing"
+                app:iconGravity="textStart"
+                app:iconPadding="12dp"
+                app:iconSize="28dp"
+                app:iconTint="@color/white" />
+
+            <!-- Continue Reading Button - Secondary option -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnContinueReading"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Continue Reading"
+                android:textAllCaps="false"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp" />
+
+            <!-- No races available state (hidden by default) -->
+            <LinearLayout
+                android:id="@+id/noRacesContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:text="Keep reading to earn more races!"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnNoRacesContinue"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="16dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Back to Reading"
+                    android:textAllCaps="false"
+                    android:textColor="@color/primary"
+                    app:strokeColor="@color/primary" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+</FrameLayout>

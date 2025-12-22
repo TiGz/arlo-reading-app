@@ -222,17 +222,41 @@
 
             </FrameLayout>
 
-            <!-- Stats button (opens dashboard) -->
-            <ImageButton
-                android:id="@+id/btnStats"
+            <!-- Games button (shows available races) -->
+            <FrameLayout
+                android:id="@+id/gamesContainer"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="View reading stats"
-                android:padding="10dp"
-                android:src="@drawable/ic_stats"
-                android:tooltipText="Your progress"
-                app:tint="@color/primary" />
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <ImageButton
+                    android:id="@+id/btnGames"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Play racing games"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_steering_wheel"
+                    android:tooltipText="Race rewards - tap to play"
+                    app:tint="@color/secondary" />
+
+                <!-- Count badge -->
+                <TextView
+                    android:id="@+id/tvGamesCount"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginEnd="2dp"
+                    android:background="@drawable/bg_badge_count_coral"
+                    android:gravity="center"
+                    android:textColor="@color/white"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    tools:text="3" />
+
+            </FrameLayout>
 
             <!-- Settings overflow menu -->
             <ImageButton

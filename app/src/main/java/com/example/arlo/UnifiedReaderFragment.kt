@@ -24,7 +24,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.arlo.databinding.FragmentUnifiedReaderBinding
+import com.example.arlo.games.GameRewardsManager
+import com.example.arlo.games.GameRewardState
+import com.example.arlo.games.GameSession
 import com.example.arlo.games.MissedStarsDialogFragment
+import com.example.arlo.games.RaceRewardsDialogFragment
+import com.example.arlo.games.pixelwheels.PixelWheelsActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
@@ -49,6 +54,10 @@ class UnifiedReaderFragment : Fragment() {
     // Track previous values for animation triggers
     private var lastStarCount = 0
     private var lastStreakCount = 0
+    private var lastAvailableRaces = 0
+
+    // Game rewards manager
+    private lateinit var gameRewardsManager: GameRewardsManager
 
     // Loading dot animations
     private var dotAnimation1: Animation? = null
@@ -91,6 +100,10 @@ class UnifiedReaderFragment : Fragment() {
 
         viewModel = ViewModelProvider(this)[UnifiedReaderViewModel::class.java]
 
+        // Initialize game rewards manager
+        val app = requireActivity().application as ArloApplication
+        gameRewardsManager = GameRewardsManager(app.statsRepository)
+
         setupUI()
         observeState()
 
@@ -102,6 +115,9 @@ class UnifiedReaderFragment : Fragment() {
             ) == PackageManager.PERMISSION_GRANTED
             viewModel.loadBook(bookId, hasAudioPermission)
         }
+
+        // Check for available races
+        updateGamesButton()
     }
 
     private fun setupUI() {
@@ -136,9 +152,9 @@ class UnifiedReaderFragment : Fragment() {
             showMissedStarsDialog()
         }
 
-        // Stats button opens the reading dashboard
-        binding.btnStats.setOnClickListener {
-            showStatsDashboard()
+        // Games button opens race rewards dialog
+        binding.btnGames.setOnClickListener {
+            showRaceRewardsDialog()
         }
 
         // Settings button opens the unified settings bottom sheet
@@ -284,6 +300,11 @@ class UnifiedReaderFragment : Fragment() {
             "$todayPoints/$dailyTarget pts"
         }
         binding.tvDailyProgress.text = progressText
+
+        // Update games button when points change (may unlock races)
+        if (todayPoints >= dailyTarget) {
+            updateGamesButton()
+        }
 
         // Streak fire indicator
         val currentStreak = sessionStats.currentStreak
@@ -986,6 +1007,79 @@ class UnifiedReaderFragment : Fragment() {
             // Open parent settings dialog with force parent mode (secret unlock)
             showParentSettings(forceParentMode = true)
             Toast.makeText(requireContext(), "Parent settings unlocked", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Update the games button visibility and badge count based on available races.
+     */
+    private fun updateGamesButton() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val rewardState = gameRewardsManager.checkGameRewardEligibility()
+            val availableRaces = when (rewardState) {
+                is GameRewardState.NewRewardAvailable -> rewardState.racesEarned
+                is GameRewardState.RacesAvailable -> rewardState.racesRemaining
+                is GameRewardState.NoRewardsAvailable -> 0
+            }
+
+            if (availableRaces > 0) {
+                binding.gamesContainer.visibility = View.VISIBLE
+                binding.tvGamesCount.text = availableRaces.toString()
+
+                // Animate when new races are earned
+                if (availableRaces > lastAvailableRaces && lastAvailableRaces >= 0) {
+                    val steeringWheelSpin = AnimationUtils.loadAnimation(requireContext(), R.anim.steering_wheel_spin)
+                    binding.btnGames.startAnimation(steeringWheelSpin)
+                }
+                lastAvailableRaces = availableRaces
+            } else {
+                binding.gamesContainer.visibility = View.GONE
+                lastAvailableRaces = 0
+            }
+        }
+    }
+
+    /**
+     * Show the race rewards dialog.
+     */
+    private fun showRaceRewardsDialog() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val rewardState = gameRewardsManager.checkGameRewardEligibility()
+            val availableRaces = when (rewardState) {
+                is GameRewardState.NewRewardAvailable -> rewardState.racesEarned
+                is GameRewardState.RacesAvailable -> rewardState.racesRemaining
+                is GameRewardState.NoRewardsAvailable -> 0
+            }
+
+            viewModel.stopReading()
+
+            val dialog = RaceRewardsDialogFragment.newInstance(availableRaces)
+            dialog.setOnStartRacingListener { races ->
+                startRacing(races)
+            }
+            dialog.setOnContinueReadingListener {
+                // Just dismiss - user wants to keep reading
+            }
+            dialog.show(parentFragmentManager, RaceRewardsDialogFragment.TAG)
+        }
+    }
+
+    /**
+     * Start a racing session with the given number of races.
+     */
+    private fun startRacing(races: Int) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val session = gameRewardsManager.claimReward()
+            if (session != null) {
+                // Launch PixelWheels activity with session
+                val intent = Intent(requireContext(), PixelWheelsActivity::class.java).apply {
+                    putExtra(PixelWheelsActivity.EXTRA_MAX_RACES, session.maxRaces)
+                    putExtra(PixelWheelsActivity.EXTRA_SESSION_ID, session.sessionId)
+                }
+                startActivity(intent)
+            } else {
+                Toast.makeText(requireContext(), "No races available", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

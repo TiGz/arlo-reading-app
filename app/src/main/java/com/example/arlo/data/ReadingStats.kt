@@ -322,7 +322,7 @@ data class ParentSettings(
     val pinCode: String? = null,         // Future: PIN lock for parent settings
     // Game reward settings
     val gameRewardsEnabled: Boolean = true,   // Enable/disable game rewards
-    val maxRacesPerDay: Int = 3,              // 1-5 races per day
+    val maxRacesPerDay: Int = 10,             // 1-20 races per day (default 10)
 
     // Milestone rewards (0-5 races each)
     val racesForDailyTarget: Int = 1,         // Races when daily target hit
