@@ -125,6 +125,8 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.cardDailyGoals.isVisible = false
             binding.sectionReadingModesHeader.isVisible = false
             binding.cardReadingModes.isVisible = false
+            binding.sectionGameRewardsHeader.isVisible = false
+            binding.cardGameRewards.isVisible = false
         } else {
             // Parent Mode: Full "Parent Settings" with all options
             binding.tvSettingsTitle.text = "Parent Settings"
@@ -135,6 +137,8 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.cardDailyGoals.isVisible = true
             binding.sectionReadingModesHeader.isVisible = true
             binding.cardReadingModes.isVisible = true
+            binding.sectionGameRewardsHeader.isVisible = true
+            binding.cardGameRewards.isVisible = true
         }
     }
 
@@ -158,6 +162,12 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 // Load max syllables setting
                 selectedMaxSyllables = ttsPreferences.getMaxSyllables()
                 updateMaxSyllablesSelection(selectedMaxSyllables)
+
+                // Load game reward settings
+                binding.switchGameRewards.isChecked = settings.gameRewardsEnabled
+                binding.sliderMaxRaces.value = settings.maxRacesPerDay.toFloat()
+                binding.tvMaxRacesValue.text = settings.maxRacesPerDay.toString()
+                updateMaxRacesVisibility(settings.gameRewardsEnabled)
             }
 
             // Load TTS preferences (always available)
@@ -271,6 +281,16 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                     }
                 }
             }
+
+            // Game rewards toggle
+            binding.switchGameRewards.setOnCheckedChangeListener { _, isChecked ->
+                updateMaxRacesVisibility(isChecked)
+            }
+
+            // Max races slider
+            binding.sliderMaxRaces.addOnChangeListener { _, value, _ ->
+                binding.tvMaxRacesValue.text = value.toInt().toString()
+            }
         }
 
         // Speech rate slider with dynamic label and value
@@ -322,6 +342,14 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
         binding.toggleMaxSyllables.check(buttonId)
     }
 
+    /**
+     * Show/hide max races slider based on game rewards toggle.
+     */
+    private fun updateMaxRacesVisibility(enabled: Boolean) {
+        binding.layoutMaxRaces.alpha = if (enabled) 1.0f else 0.5f
+        binding.sliderMaxRaces.isEnabled = enabled
+    }
+
     private fun saveSettings() {
         viewLifecycleOwner.lifecycleScope.launch {
             // Save parent settings to database (only in parent mode)
@@ -330,6 +358,8 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                     dailyPointsTarget = binding.sliderDailyTarget.value.toInt(),
                     enableStreakBonuses = binding.switchStreakBonuses.isChecked,
                     kidModeEnabled = ttsPreferences.getKidMode(),  // Preserve existing kid mode setting
+                    gameRewardsEnabled = binding.switchGameRewards.isChecked,
+                    maxRacesPerDay = binding.sliderMaxRaces.value.toInt(),
                     lastModified = System.currentTimeMillis()
                 )
 

@@ -221,4 +221,21 @@
         <item name="chipBackgroundColor">@color/accent_orange</item>
     </style>
 
+    <!-- ============================================ -->
+    <!-- DIALOG STYLES                               -->
+    <!-- ============================================ -->
+
+    <style name="Theme.Arlo.Dialog.Fullscreen" parent="Theme.MaterialComponents.Light.Dialog">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Arlo.Dialog</item>
+    </style>
+
+    <style name="Animation.Arlo.Dialog" parent="Animation.AppCompat.Dialog">
+        <item name="android:windowEnterAnimation">@android:anim/fade_in</item>
+        <item name="android:windowExitAnimation">@android:anim/fade_out</item>
+    </style>
+
 </resources>

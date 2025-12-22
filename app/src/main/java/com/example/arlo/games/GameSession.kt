@@ -33,6 +33,7 @@ enum class Difficulty {
 data class GameSessionResult(
     val sessionId: String,
     val racesCompleted: Int,
+    val bestPosition: Int = 1,  // Best finishing position (1st, 2nd, etc.)
     val completedAt: Long = System.currentTimeMillis()
 )
 

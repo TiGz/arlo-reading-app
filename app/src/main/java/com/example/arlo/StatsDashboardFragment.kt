@@ -1,12 +1,16 @@
 package com.example.arlo
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.arlo.data.DailyRecordDisplay
@@ -14,6 +18,14 @@ import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.data.ReadingStatsRepository.StatsPeriod
 import com.example.arlo.data.WeeklyGoal
 import com.example.arlo.databinding.FragmentStatsDashboardBinding
+import com.example.arlo.games.GameRewardState
+import com.example.arlo.games.GameRewardsManager
+import com.example.arlo.games.GameSession
+import com.example.arlo.games.GameSessionResult
+import com.example.arlo.games.GameUnlockDialog
+import com.example.arlo.games.RaceCompleteDialog
+import com.example.arlo.games.pixelwheels.PixelWheelsActivity
+import com.example.arlo.games.pixelwheels.PixelWheelsProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -32,6 +44,15 @@ class StatsDashboardFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var statsRepository: ReadingStatsRepository
+    private lateinit var gameRewardsManager: GameRewardsManager
+    private val pixelWheelsProvider = PixelWheelsProvider()
+
+    // Game launcher
+    private val gameLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        handleGameResult(result.resultCode, result.data)
+    }
 
     // Current state
     private var selectedPeriod: StatsPeriod = StatsPeriod.TODAY
@@ -56,11 +77,14 @@ class StatsDashboardFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         statsRepository = (requireActivity().application as ArloApplication).statsRepository
+        gameRewardsManager = GameRewardsManager(statsRepository)
 
         initDayViews()
         setupUI()
+        setupGameReward()
         loadStats()
         observeStats()
+        checkGameReward()
     }
 
     private fun initDayViews() {
@@ -101,6 +125,108 @@ class StatsDashboardFragment : Fragment() {
                 }
             }
         }
+    }
+
+    private fun setupGameReward() {
+        binding.btnPlayGame.setOnClickListener {
+            launchGame()
+        }
+    }
+
+    private fun checkGameReward() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val rewardState = withContext(Dispatchers.IO) {
+                gameRewardsManager.checkGameRewardEligibility()
+            }
+
+            when (rewardState) {
+                is GameRewardState.NewRewardAvailable -> {
+                    // Show celebration dialog
+                    showGameUnlockCelebration(rewardState.racesEarned)
+                    updateGameRewardUI(rewardState.racesEarned)
+                }
+                is GameRewardState.RacesAvailable -> {
+                    // Show game button
+                    updateGameRewardUI(rewardState.racesRemaining)
+                }
+                GameRewardState.NoRewardsAvailable -> {
+                    // Hide game button
+                    binding.cardGameReward.isVisible = false
+                }
+            }
+        }
+    }
+
+    private fun updateGameRewardUI(racesAvailable: Int) {
+        binding.cardGameReward.isVisible = true
+        binding.tvGameRewardTitle.text = "Game Reward Available!"
+        binding.tvGameRewardSubtitle.text = if (racesAvailable == 1) {
+            "1 race earned"
+        } else {
+            "$racesAvailable races earned"
+        }
+    }
+
+    private fun showGameUnlockCelebration(racesEarned: Int) {
+        val dialog = GameUnlockDialog.newInstance(racesEarned)
+        dialog.setOnPlayNowListener {
+            launchGame()
+        }
+        dialog.setOnSaveForLaterListener {
+            // Just dismiss - game will be available from the card
+        }
+        dialog.show(childFragmentManager, "game_unlock")
+    }
+
+    private fun launchGame() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val session = withContext(Dispatchers.IO) {
+                gameRewardsManager.claimReward()
+            }
+
+            if (session != null) {
+                val intent = pixelWheelsProvider.createLaunchIntent(requireContext(), session)
+                gameLauncher.launch(intent)
+            }
+        }
+    }
+
+    private fun handleGameResult(resultCode: Int, data: Intent?) {
+        // Parse result - handles null data internally
+        val gameResult = pixelWheelsProvider.parseResult(data)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            if (gameResult.racesCompleted > 0) {
+                // Record the completed session
+                withContext(Dispatchers.IO) {
+                    gameRewardsManager.recordSessionComplete(gameResult)
+                }
+
+                // Get remaining races after this session
+                val remainingRaces = withContext(Dispatchers.IO) {
+                    val today = statsRepository.getTodayStats()
+                    today.racesEarned - today.racesUsed
+                }
+
+                // Show race completion dialog
+                showRaceCompleteDialog(gameResult.bestPosition, remainingRaces)
+            }
+
+            // Refresh game reward state and stats
+            checkGameReward()
+            loadStats()
+        }
+    }
+
+    private fun showRaceCompleteDialog(position: Int, racesRemaining: Int) {
+        val dialog = RaceCompleteDialog.newInstance(position, racesRemaining)
+        dialog.setOnPlayAgainListener {
+            launchGame()
+        }
+        dialog.setOnBackToReadingListener {
+            // Just dismiss and stay on stats screen
+        }
+        dialog.show(childFragmentManager, "race_complete")
     }
 
     private fun selectPeriod(period: StatsPeriod) {

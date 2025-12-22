@@ -50,11 +50,18 @@ class PixelWheelsProvider : GameProvider {
     /**
      * Parse the result from PixelWheelsActivity.
      */
-    fun parseResult(data: Intent?): GameSessionResult? {
-        data ?: return null
+    fun parseResult(data: Intent?): GameSessionResult {
+        if (data == null) {
+            return GameSessionResult(
+                sessionId = "",
+                racesCompleted = 0,
+                bestPosition = 0
+            )
+        }
         return GameSessionResult(
             sessionId = data.getStringExtra(PixelWheelsActivity.RESULT_SESSION_ID) ?: "",
             racesCompleted = data.getIntExtra(PixelWheelsActivity.RESULT_RACES_COMPLETED, 0),
+            bestPosition = data.getIntExtra(PixelWheelsActivity.RESULT_BEST_POSITION, 1),
             completedAt = data.getLongExtra(PixelWheelsActivity.RESULT_ENDED_AT, System.currentTimeMillis())
         )
     }

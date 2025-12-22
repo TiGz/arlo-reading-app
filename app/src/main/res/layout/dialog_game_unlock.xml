@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#80000000">
+
+    <!-- Confetti overlay -->
+    <com.example.arlo.games.ConfettiView
+        android:id="@+id/confettiView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_margin="32dp"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="8dp"
+        app:cardBackgroundColor="@color/surface">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:gravity="center">
+
+            <!-- Celebration Header -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Goal Complete!"
+                android:textSize="16sp"
+                android:textColor="@color/accent_green"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Racing Car Icon -->
+            <ImageView
+                android:id="@+id/ivRacingCar"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:src="@drawable/ic_game_racing"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Race Count -->
+            <TextView
+                android:id="@+id/tvRaceCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="You earned 1 race!"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Subtitle -->
+            <TextView
+                android:id="@+id/tvSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Great job meeting your goal!"
+                android:textSize="16sp"
+                android:textColor="@color/text_secondary"
+                android:gravity="center"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Game Info Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="@color/surface_variant">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:src="@drawable/ic_game_racing"
+                        android:layout_marginEnd="16dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Pixel Wheels"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Race cartoon cars on fun tracks!"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_secondary" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Play Now Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPlayNow"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Play Now!"
+                android:textSize="18sp"
+                android:textAllCaps="false"
+                app:cornerRadius="28dp"
+                app:backgroundTint="@color/secondary"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Save for Later Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSaveForLater"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Save for Later"
+                android:textSize="16sp"
+                android:textAllCaps="false"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:textColor="@color/text_secondary" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+</FrameLayout>

@@ -802,6 +802,258 @@
 
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- ═══════════════════════════════════════════ -->
+                <!-- Section 4: Game Rewards (Parent Only) -->
+                <!-- ═══════════════════════════════════════════ -->
+
+                <LinearLayout
+                    android:id="@+id/sectionGameRewardsHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
+
+                    <View
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_section_icon_coral" />
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginStart="-25dp"
+                        android:src="@drawable/ic_game_racing"
+                        app:tint="@color/secondary_dark" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:text="Game Rewards"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium"
+                        android:letterSpacing="0.02" />
+
+                </LinearLayout>
+
+                <!-- Game Rewards Card (Parent Only) -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardGameRewards"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp"
+                    app:cardBackgroundColor="@color/surface"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1.5dp"
+                    app:strokeColor="@color/settings_card_stroke">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="4dp">
+
+                        <!-- Enable Game Rewards Toggle -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:padding="16dp"
+                            android:background="@drawable/bg_toggle_item_top">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:layout_marginEnd="16dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Enable Game Rewards"
+                                    android:textSize="15sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/text_primary" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:text="Earn racing game time for meeting daily goals"
+                                    android:textSize="13sp"
+                                    android:textColor="@color/text_secondary"
+                                    android:lineSpacingExtra="2dp" />
+
+                            </LinearLayout>
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchGameRewards"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="56dp"
+                                android:minHeight="56dp"
+                                app:thumbTint="@color/switch_thumb_coral"
+                                app:trackTint="@color/switch_track_coral" />
+
+                        </LinearLayout>
+
+                        <!-- Divider -->
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginHorizontal="16dp"
+                            android:background="@color/divider" />
+
+                        <!-- Max Races Per Day -->
+                        <LinearLayout
+                            android:id="@+id/layoutMaxRaces"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="16dp"
+                            android:background="@drawable/bg_toggle_item_bottom">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical">
+
+                                <LinearLayout
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="Max Races Per Day"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold"
+                                        android:textColor="@color/text_primary" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginTop="4dp"
+                                        android:text="Limit racing time each day"
+                                        android:textSize="13sp"
+                                        android:textColor="@color/text_secondary" />
+
+                                </LinearLayout>
+
+                                <!-- Races Value Badge -->
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="44dp"
+                                    android:background="@drawable/bg_value_badge_coral"
+                                    android:gravity="center"
+                                    android:paddingHorizontal="16dp">
+
+                                    <TextView
+                                        android:id="@+id/tvMaxRacesValue"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="3"
+                                        android:textSize="20sp"
+                                        android:textStyle="bold"
+                                        android:textColor="@color/secondary"
+                                        android:fontFamily="sans-serif-medium" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginStart="4dp"
+                                        android:text="races"
+                                        android:textSize="13sp"
+                                        android:textColor="@color/text_hint" />
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                            <!-- Races Slider with Racing Icons -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="20dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <!-- Single car icon -->
+                                <LinearLayout
+                                    android:layout_width="44dp"
+                                    android:layout_height="44dp"
+                                    android:background="@drawable/bg_speed_icon_coral"
+                                    android:gravity="center">
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="🏎️"
+                                        android:textSize="20sp" />
+
+                                </LinearLayout>
+
+                                <com.google.android.material.slider.Slider
+                                    android:id="@+id/sliderMaxRaces"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginHorizontal="12dp"
+                                    android:valueFrom="1"
+                                    android:valueTo="5"
+                                    android:stepSize="1"
+                                    app:haloColor="@color/switch_track_coral"
+                                    app:thumbColor="@color/secondary"
+                                    app:thumbRadius="14dp"
+                                    app:thumbElevation="4dp"
+                                    app:trackColorActive="@color/secondary"
+                                    app:trackColorInactive="@color/slider_track_inactive"
+                                    app:trackHeight="8dp"
+                                    app:labelBehavior="gone" />
+
+                                <!-- Triple car icon (more races) -->
+                                <LinearLayout
+                                    android:layout_width="44dp"
+                                    android:layout_height="44dp"
+                                    android:background="@drawable/bg_speed_icon_coral"
+                                    android:gravity="center">
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="🏁"
+                                        android:textSize="20sp" />
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                            <!-- Info text -->
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center_horizontal"
+                                android:layout_marginTop="12dp"
+                                android:text="Each race takes about 2-3 minutes"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_hint"
+                                android:fontFamily="sans-serif" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
             </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>

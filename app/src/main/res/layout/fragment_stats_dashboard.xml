@@ -709,6 +709,72 @@
 
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- Game Reward Card (hidden when no reward available) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardGameReward"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/kid_mode_card_bg">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@drawable/ic_game_racing"
+                    android:layout_marginEnd="16dp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvGameRewardTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Game Reward Available!"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/secondary" />
+
+                    <TextView
+                        android:id="@+id/tvGameRewardSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="1 race earned"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary" />
+
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPlayGame"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:text="Play"
+                    android:textSize="14sp"
+                    android:textAllCaps="false"
+                    app:cornerRadius="24dp"
+                    app:backgroundTint="@color/secondary"
+                    app:icon="@drawable/ic_game_racing"
+                    app:iconSize="20dp"
+                    app:iconTint="@color/white" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- Second Row Stats -->
         <LinearLayout
             android:layout_width="match_parent"

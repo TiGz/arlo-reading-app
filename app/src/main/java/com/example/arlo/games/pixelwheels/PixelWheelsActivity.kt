@@ -40,6 +40,7 @@ class PixelWheelsActivity : AndroidApplication() {
 
     private var maxRaces: Int = 1
     private var racesCompleted: Int = 0
+    private var bestPosition: Int = Int.MAX_VALUE  // Track best finishing position
     private var sessionId: String = ""
     private var startedAt: Long = 0
 
@@ -93,12 +94,17 @@ class PixelWheelsActivity : AndroidApplication() {
 
     private fun handleRaceComplete(position: Int) {
         racesCompleted++
+        // Track best finishing position (lower is better)
+        if (position < bestPosition) {
+            bestPosition = position
+        }
         // ArloMaestro handles the flow - if this was the last race, onAllRacesComplete will be called
     }
 
     private fun finishWithResult() {
         val resultIntent = Intent().apply {
             putExtra(RESULT_RACES_COMPLETED, racesCompleted)
+            putExtra(RESULT_BEST_POSITION, if (bestPosition == Int.MAX_VALUE) 1 else bestPosition)
             putExtra(RESULT_SESSION_ID, sessionId)
             putExtra(RESULT_STARTED_AT, startedAt)
             putExtra(RESULT_ENDED_AT, System.currentTimeMillis())
@@ -117,6 +123,7 @@ class PixelWheelsActivity : AndroidApplication() {
         const val EXTRA_MAX_RACES = "max_races"
         const val EXTRA_SESSION_ID = "session_id"
         const val RESULT_RACES_COMPLETED = "races_completed"
+        const val RESULT_BEST_POSITION = "best_position"
         const val RESULT_SESSION_ID = "session_id"
         const val RESULT_STARTED_AT = "started_at"
         const val RESULT_ENDED_AT = "ended_at"

@@ -310,6 +310,9 @@ data class ParentSettings(
     val maxStreakMultiplier: Float = 2.0f,  // Cap at 2x
     val kidModeEnabled: Boolean = true,
     val pinCode: String? = null,         // Future: PIN lock for parent settings
+    // Game reward settings
+    val gameRewardsEnabled: Boolean = true,   // Enable/disable game rewards
+    val maxRacesPerDay: Int = 3,              // 1-5 races per day
     val lastModified: Long = System.currentTimeMillis()
 )
 

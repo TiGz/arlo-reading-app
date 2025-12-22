@@ -18,6 +18,11 @@ class GameRewardsManager(
         val today = statsRepository.getTodayStats()
         val parentSettings = statsRepository.getParentSettings()
 
+        // Check if game rewards are enabled by parent
+        if (!parentSettings.gameRewardsEnabled) {
+            return GameRewardState.NoRewardsAvailable
+        }
+
         // Check if goal met for first time today
         if (today.goalMet && !today.gameRewardClaimed) {
             return GameRewardState.NewRewardAvailable(
@@ -39,6 +44,7 @@ class GameRewardsManager(
      * - 1 race for meeting daily goal
      * - +1 bonus for exceeding goal by 50%
      * - +1 bonus for streak of 5+ gold stars
+     * Capped by parent's maxRacesPerDay setting.
      */
     private fun calculateRacesEarned(stats: DailyStats, settings: ParentSettings): Int {
         var races = 1  // Base: 1 race for meeting goal
@@ -53,7 +59,8 @@ class GameRewardsManager(
             races++
         }
 
-        return races.coerceAtMost(3)  // Max 3 races per day
+        // Cap at parent's configured max (default 3)
+        return races.coerceAtMost(settings.maxRacesPerDay)
     }
 
     /**
