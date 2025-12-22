@@ -283,7 +283,7 @@ class ClaudeOCRService(private val context: Context) {
             val sentences = sentencesArray.map { element ->
                 val obj = element.asJsonObject
                 SentenceData(
-                    text = obj.get("text").asString,
+                    text = postProcessSentence(obj.get("text").asString),
                     isComplete = obj.get("isComplete")?.asBoolean ?: true
                 )
             }
@@ -315,7 +315,7 @@ class ClaudeOCRService(private val context: Context) {
         val sentences = sentencesArray.map { element ->
             val obj = element.asJsonObject
             SentenceData(
-                text = obj.get("text").asString,
+                text = postProcessSentence(obj.get("text").asString),
                 isComplete = obj.get("isComplete")?.asBoolean ?: true
             )
         }
@@ -339,7 +339,7 @@ class ClaudeOCRService(private val context: Context) {
             .replace("\n", " ")
             .split(Regex("""(?<=[.!?])\s+"""))
             .filter { it.isNotBlank() }
-            .map { SentenceData(text = it.trim(), isComplete = true) }
+            .map { SentenceData(text = postProcessSentence(it.trim()), isComplete = true) }
             .toMutableList()
 
         // Mark last sentence as potentially incomplete if it doesn't end with punctuation
@@ -377,6 +377,22 @@ class ClaudeOCRService(private val context: Context) {
     companion object {
         private const val TAG = "ClaudeOCR"
         private const val API_URL = "https://api.anthropic.com/v1/messages"
+
+        /**
+         * Post-process sentence text to fix known TTS compatibility issues.
+         * Rules are applied in order - add new rules here as needed.
+         */
+        fun postProcessSentence(text: String): String {
+            var result = text
+
+            // Rule 1: Replace em-dash and en-dash surrounded by spaces with comma
+            // Kokoro TTS has issues with dashes, returning incomplete timestamps
+            result = result.replace(" – ", ", ")  // en-dash (U+2013)
+            result = result.replace(" — ", ", ")  // em-dash (U+2014)
+            result = result.replace(" - ", ", ")  // regular hyphen-minus
+
+            return result
+        }
 
         private val OCR_PROMPT = """
 Extract text from this book page image. This is a CHILDREN'S BOOK - expect varied text sizes, fonts, and layouts.
