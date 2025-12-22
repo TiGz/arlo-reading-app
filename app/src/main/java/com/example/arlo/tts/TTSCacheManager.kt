@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -104,11 +105,23 @@ class TTSCacheManager(
         // 4. We own this request - synthesize with mutex to serialize requests
         try {
             val result = synthesisMutex.withLock {
+                // Yield if live playback is waiting - let it go first
+                while (ttsService.livePlaybackWaiting) {
+                    Log.d(TAG, "Background caching yielding for live playback...")
+                    delay(100)
+                }
+
                 // Double-check cache (another request might have completed while we waited)
                 val rechecked = getCachedAudio(sentence)
                 if (rechecked != null) {
                     Log.d(TAG, "Cache hit after mutex wait: ${sentence.take(40)}...")
                     return@withLock SynthesisResult(rechecked.audioBytes, rechecked.timestampsJson)
+                }
+
+                // Check circuit breaker before making request
+                if (!ttsService.isKokoroAvailable()) {
+                    Log.d(TAG, "Kokoro unavailable (circuit open), skipping: ${sentence.take(40)}...")
+                    return@withLock null
                 }
 
                 // Actually synthesize

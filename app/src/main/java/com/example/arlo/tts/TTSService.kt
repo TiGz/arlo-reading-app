@@ -14,6 +14,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.arlo.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -98,8 +100,67 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
     private var exoPlayer: ExoPlayer? = null
     private var kokoroTempFile: File? = null
     private val highlightHandler = Handler(Looper.getMainLooper())
+
+    // Rate limiting: serialize ALL Kokoro requests to prevent server overload
+    // Only 1 request at a time to be gentle on the server
+    private val kokoroSemaphore = Semaphore(permits = 1)
+
+    // Queue statistics for debugging
+    @Volatile private var activeRequest: String? = null
+    @Volatile private var queuedRequests = 0
+
+    // Priority flag: when true, background caching should pause to let live playback through
+    @Volatile var livePlaybackWaiting = false
+        private set
+
+    // Circuit breaker: stop retrying when server is down
+    @Volatile private var kokoroCircuitOpen = false
+    @Volatile private var kokoroLastFailureTime = 0L
+    private val kokoroCircuitCooldownMs = 30_000L  // 30 seconds before retrying
+    @Volatile private var consecutiveFailures = 0
+    private val maxConsecutiveFailures = 3  // Trip circuit after 3 failures
+
     private var kokoroVoice: String = "bf_emma"  // British female
     @Volatile private var isStopped: Boolean = false  // Flag to prevent playback after stop
+
+    /**
+     * Check if Kokoro is available (circuit not open or cooldown expired).
+     */
+    fun isKokoroAvailable(): Boolean {
+        if (kokoroServerUrl == null) return false
+        if (!kokoroCircuitOpen) return true
+
+        // Check if cooldown has expired
+        val elapsed = System.currentTimeMillis() - kokoroLastFailureTime
+        if (elapsed >= kokoroCircuitCooldownMs) {
+            Log.d(TAG, "Kokoro circuit breaker: cooldown expired, allowing retry")
+            kokoroCircuitOpen = false
+            consecutiveFailures = 0
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * Record a Kokoro failure for circuit breaker logic.
+     */
+    private fun recordKokoroFailure() {
+        consecutiveFailures++
+        kokoroLastFailureTime = System.currentTimeMillis()
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+            kokoroCircuitOpen = true
+            Log.w(TAG, "Kokoro circuit breaker OPEN after $consecutiveFailures failures. Will retry in ${kokoroCircuitCooldownMs / 1000}s")
+        }
+    }
+
+    /**
+     * Record a Kokoro success - reset failure counter.
+     */
+    private fun recordKokoroSuccess() {
+        consecutiveFailures = 0
+        kokoroCircuitOpen = false
+    }
 
     private fun tryNextEngine() {
         if (currentEngineIndex >= ttsEngines.size) {
@@ -302,7 +363,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
                 playWithTimestamps(result.audioBytes, result.timestamps, onComplete)
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "Kokoro failed: ${e.message}, falling back to Android TTS")
+                Log.w(TAG, "Kokoro failed, FALLBACK to Android TTS: ${e.message}")
                 currentPlaybackText = null
                 // Notify listener about fallback
                 onKokoroFallback?.invoke()
@@ -310,6 +371,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
         }
 
         // Fallback to existing Android TTS
+        Log.d(TAG, "Using Android TTS fallback for: ${text.take(30)}...")
         speak(text, onComplete)
     }
 
@@ -355,7 +417,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
                 playWithTimestamps(result.audioBytes, result.timestamps, onComplete, startMs = 0, endMs = stopAtMs)
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "Kokoro failed: ${e.message}, falling back to Android TTS")
+                Log.w(TAG, "Kokoro failed, FALLBACK to Android TTS: ${e.message}")
                 currentPlaybackText = null
                 onKokoroFallback?.invoke()
             }
@@ -363,6 +425,7 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
 
         // Fallback: extract partial text and speak with Android TTS
         // This won't be as clean but it's better than nothing
+        Log.d(TAG, "Using Android TTS fallback for: ${fullText.take(30)}...")
         speak(fullText, onComplete)
     }
 
@@ -421,79 +484,119 @@ class TTSService(private val context: Context) : TextToSpeech.OnInitListener {
         return text.replace(" - ", ", ")
     }
 
-    private suspend fun synthesizeKokoro(text: String): KokoroResult = withContext(Dispatchers.IO) {
-        val processedText = preprocessForKokoro(text)
-        val json = JSONObject().apply {
-            put("input", processedText)
-            put("voice", kokoroVoice)
-            put("stream", false)
+    /**
+     * Internal method that actually makes the HTTP request to Kokoro.
+     * All Kokoro synthesis goes through here, rate-limited by semaphore.
+     *
+     * @param isLivePlayback If true, this is a user-initiated request that should have priority
+     */
+    private suspend fun synthesizeKokoroInternal(text: String, voice: String, isLivePlayback: Boolean = false): KokoroResult = withContext(Dispatchers.IO) {
+        // Check circuit breaker first
+        if (!isKokoroAvailable()) {
+            val remainingCooldown = (kokoroCircuitCooldownMs - (System.currentTimeMillis() - kokoroLastFailureTime)) / 1000
+            Log.w(TAG, "Kokoro CIRCUIT OPEN (retry in ${remainingCooldown}s): ${text.take(30)}...")
+            throw IOException("Kokoro circuit breaker is open")
         }
 
-        val request = Request.Builder()
-            .url("$kokoroServerUrl/dev/captioned_speech")
-            .post(json.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-
-        val response = kokoroHttpClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw IOException("Kokoro error: ${response.code}")
+        // If this is live playback, signal that we're waiting
+        if (isLivePlayback) {
+            livePlaybackWaiting = true
         }
 
-        val responseBody = response.body?.string() ?: throw IOException("Empty response")
-        val responseJson = JSONObject(responseBody)
-        val audioBase64 = responseJson.getString("audio")
-        val timestampsArray = responseJson.getJSONArray("timestamps")
+        queuedRequests++
+        val queuePosition = queuedRequests
+        val waitStart = System.currentTimeMillis()
+        Log.d(TAG, "Kokoro QUEUE: +1 request (total=$queuedRequests, priority=$isLivePlayback, active=$activeRequest): ${text.take(30)}...")
 
-        KokoroResult(
-            audioBytes = Base64.decode(audioBase64, Base64.DEFAULT),
-            timestamps = (0 until timestampsArray.length()).map { i ->
-                val obj = timestampsArray.getJSONObject(i)
-                WordTimestamp(
-                    word = obj.getString("word"),
-                    startMs = (obj.getDouble("start_time") * 1000).toLong(),
-                    endMs = (obj.getDouble("end_time") * 1000).toLong()
-                )
-            },
-            timestampsJson = timestampsArray.toString()
-        )
+        try {
+            // Rate limit: only 1 request at a time
+            kokoroSemaphore.withPermit {
+                val waitTime = System.currentTimeMillis() - waitStart
+                queuedRequests--
+                activeRequest = text.take(30)
+
+                if (isLivePlayback) {
+                    livePlaybackWaiting = false
+                }
+
+                Log.d(TAG, "Kokoro START (waited ${waitTime}ms, priority=$isLivePlayback, remaining=$queuedRequests): ${text.take(30)}...")
+
+                val processedText = preprocessForKokoro(text)
+                val json = JSONObject().apply {
+                    put("input", processedText)
+                    put("voice", voice)
+                    put("stream", false)
+                }
+
+                val request = Request.Builder()
+                    .url("$kokoroServerUrl/dev/captioned_speech")
+                    .post(json.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                try {
+                    val response = kokoroHttpClient.newCall(request).execute()
+                    if (!response.isSuccessful) {
+                        recordKokoroFailure()
+                        throw IOException("Kokoro error: ${response.code}")
+                    }
+
+                    val responseBody = response.body?.string() ?: throw IOException("Empty response")
+                    val responseJson = JSONObject(responseBody)
+                    val audioBase64 = responseJson.getString("audio")
+                    val timestampsArray = responseJson.getJSONArray("timestamps")
+
+                    // Success! Reset failure counter
+                    recordKokoroSuccess()
+                    activeRequest = null
+                    Log.d(TAG, "Kokoro DONE: ${text.take(30)}...")
+
+                    KokoroResult(
+                        audioBytes = Base64.decode(audioBase64, Base64.DEFAULT),
+                        timestamps = (0 until timestampsArray.length()).map { i ->
+                            val obj = timestampsArray.getJSONObject(i)
+                            WordTimestamp(
+                                word = obj.getString("word"),
+                                startMs = (obj.getDouble("start_time") * 1000).toLong(),
+                                endMs = (obj.getDouble("end_time") * 1000).toLong()
+                            )
+                        },
+                        timestampsJson = timestampsArray.toString()
+                    )
+                } catch (e: Exception) {
+                    activeRequest = null
+                    recordKokoroFailure()
+                    Log.w(TAG, "Kokoro FAILED (failures=$consecutiveFailures/$maxConsecutiveFailures): ${e.message}")
+                    throw e
+                }
+            }
+        } finally {
+            if (isLivePlayback) {
+                livePlaybackWaiting = false
+            }
+        }
+    }
+
+    /**
+     * Synthesize for live playback - has priority over background caching.
+     */
+    private suspend fun synthesizeKokoro(text: String): KokoroResult {
+        return synthesizeKokoroInternal(text, kokoroVoice, isLivePlayback = true)
     }
 
     /**
      * Synthesize Kokoro TTS for caching purposes.
      * Returns raw audio bytes and timestamps JSON without playing.
      * Throws IOException if Kokoro server is unavailable.
+     * Uses the same rate-limited path as live playback.
      */
-    suspend fun synthesizeKokoroForCache(text: String, voice: String): KokoroCacheResult = withContext(Dispatchers.IO) {
+    suspend fun synthesizeKokoroForCache(text: String, voice: String): KokoroCacheResult {
         if (kokoroServerUrl == null) {
             throw IOException("Kokoro server URL not configured")
         }
 
-        val processedText = preprocessForKokoro(text)
-        val json = JSONObject().apply {
-            put("input", processedText)
-            put("voice", voice)
-            put("stream", false)
-        }
-
-        val request = Request.Builder()
-            .url("$kokoroServerUrl/dev/captioned_speech")
-            .post(json.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-
-        val response = kokoroHttpClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw IOException("Kokoro error: ${response.code}")
-        }
-
-        val responseBody = response.body?.string() ?: throw IOException("Empty response")
-        val responseJson = JSONObject(responseBody)
-        val audioBase64 = responseJson.getString("audio")
-        val timestampsArray = responseJson.getJSONArray("timestamps")
-
-        KokoroCacheResult(
-            audioBytes = Base64.decode(audioBase64, Base64.DEFAULT),
-            timestampsJson = timestampsArray.toString()
-        )
+        // Use the centralized rate-limited synthesis
+        val result = synthesizeKokoroInternal(text, voice)
+        return KokoroCacheResult(result.audioBytes, result.timestampsJson)
     }
 
     /**

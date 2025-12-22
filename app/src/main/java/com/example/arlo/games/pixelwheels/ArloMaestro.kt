@@ -128,8 +128,20 @@ class ArloMaestro(
             }
 
             override fun onQuitPressed() {
-                android.util.Log.d("ArloMaestro", "RaceScreen.onQuitPressed - exiting game")
-                // Quit = exit game entirely
+                android.util.Log.d("ArloMaestro", "RaceScreen.onQuitPressed")
+                // Check if player completed at least one lap before quitting
+                val raceScreen = game.screen as? RaceScreen
+                val completedLap = raceScreen != null && !raceScreen.isOnFirstLap()
+
+                if (completedLap) {
+                    // Player completed at least one lap - count this as a race
+                    android.util.Log.d("ArloMaestro", "Player completed lap before quit - counting as race")
+                    onRaceFinished(1)
+                } else {
+                    android.util.Log.d("ArloMaestro", "Player quit on first lap - not counting")
+                }
+
+                // Exit game entirely
                 stopEnoughInputChecker()
                 game.showMainMenu()
             }
