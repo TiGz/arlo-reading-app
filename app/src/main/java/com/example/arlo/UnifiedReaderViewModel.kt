@@ -1112,42 +1112,39 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     private var currentTargetWords: String? = null
 
     /**
-     * Speak current sentence in collaborative mode:
-     * TTS reads all but the last word, then listens for user to speak it.
-     * Uses timestamp-based clipping to play partial audio from full sentence cache.
+     * Reasons to skip collaborative reading for a sentence.
+     * Makes it easy to add new rules and provides clear logging.
      */
-    fun speakCurrentSentenceCollaborative() {
-        val sentence = _state.value.currentSentence ?: return
+    private sealed class CollaborativeSkipReason(val message: String) {
+        data class IncompleteSentence(val text: String) : CollaborativeSkipReason("Incomplete sentence")
+        data class TooShort(val wordCount: Int, val text: String) : CollaborativeSkipReason("Short sentence ($wordCount words)")
+        data class QuotedSpeech(val targetWords: String) : CollaborativeSkipReason("Quoted speech in target words")
+        data class ExceedsSyllableLimit(val targetWords: String, val maxSyllables: Int) : CollaborativeSkipReason("Target word exceeds max syllables ($maxSyllables)")
+        data class ContainsAcronym(val targetWords: String) : CollaborativeSkipReason("Target contains acronym (all caps)")
+    }
 
-        // Skip incomplete sentences - use normal TTS
+    /**
+     * Check if collaborative reading should be skipped for the current sentence.
+     * Returns a skip reason if collaboration should be skipped, null otherwise.
+     */
+    private fun shouldSkipCollaboration(sentence: SentenceData, targetWords: String): CollaborativeSkipReason? {
+        // Rule 1: Skip incomplete sentences at the end of page
         if (!sentence.isComplete && _state.value.currentSentenceIndex == _state.value.sentences.lastIndex) {
-            speakCurrentSentence()
-            return
+            return CollaborativeSkipReason.IncompleteSentence(sentence.text)
         }
 
-        // Skip very short sentences (4 words or less) - collaborative mode doesn't make sense
-        // TTS reads the whole sentence and auto-advances
+        // Rule 2: Skip very short sentences (4 words or less)
         val wordCount = sentence.text.trim().split(" ").size
         if (wordCount <= 4) {
-            Log.d(TAG, "Short sentence ($wordCount words), skipping collaboration: '${sentence.text}'")
-            speakCurrentSentenceAndAutoAdvance()
-            return
+            return CollaborativeSkipReason.TooShort(wordCount, sentence.text)
         }
 
-        // Pre-warm the recognizer while TTS is playing to reduce startup latency
-        ensureRecognizerWarm()
-
-        val (targetWords, range) = extractTargetWords(sentence.text)
-        Log.d(TAG, "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
-
-        // Skip collaborative for quoted speech - speech recognition struggles with these
+        // Rule 3: Skip quoted speech - speech recognition struggles with these
         if (targetWords.contains("'") || targetWords.contains("\"")) {
-            Log.d(TAG, "Quoted speech in target words, skipping collaboration: '$targetWords'")
-            speakCurrentSentenceAndAutoAdvance()
-            return
+            return CollaborativeSkipReason.QuotedSpeech(targetWords)
         }
 
-        // Skip collaborative for words exceeding max syllable setting
+        // Rule 4: Skip words exceeding max syllable setting
         val maxSyllables = ttsPreferences.getMaxSyllables()
         if (maxSyllables > 0) {  // 0 means "Any" (no limit)
             val targetWordsList = targetWords.split(" ")
@@ -1159,11 +1156,53 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             }
 
             if (exceedsLimit) {
-                Log.d(TAG, "Target word exceeds max syllables ($maxSyllables), skipping: '$targetWords'")
-                speakCurrentSentenceAndAutoAdvance()
-                return
+                return CollaborativeSkipReason.ExceedsSyllableLimit(targetWords, maxSyllables)
             }
         }
+
+        // Rule 5: Skip acronyms (all uppercase words like "SHARF", "NASA", "FBI")
+        // These are hard to recognize via speech and often mispronounced
+        val targetWordsList = targetWords.split(" ")
+            .map { it.replace(Regex("[^A-Za-z]"), "") }  // Remove punctuation
+            .filter { it.length >= 2 }  // Only check words with 2+ letters
+
+        val hasAcronym = targetWordsList.any { word ->
+            word.all { it.isUpperCase() }
+        }
+
+        if (hasAcronym) {
+            return CollaborativeSkipReason.ContainsAcronym(targetWords)
+        }
+
+        return null  // No reason to skip
+    }
+
+    /**
+     * Speak current sentence in collaborative mode:
+     * TTS reads all but the last word, then listens for user to speak it.
+     * Uses timestamp-based clipping to play partial audio from full sentence cache.
+     */
+    fun speakCurrentSentenceCollaborative() {
+        val sentence = _state.value.currentSentence ?: return
+
+        val (targetWords, range) = extractTargetWords(sentence.text)
+        Log.d(TAG, "extractTargetWords: sentence='${sentence.text}', targetWords='$targetWords', range=$range")
+
+        // Check all skip rules
+        val skipReason = shouldSkipCollaboration(sentence, targetWords)
+        if (skipReason != null) {
+            Log.d(TAG, "${skipReason.message}, skipping collaboration: '$targetWords'")
+            // For incomplete sentences, use normal TTS; for others, auto-advance after
+            if (skipReason is CollaborativeSkipReason.IncompleteSentence) {
+                speakCurrentSentence()
+            } else {
+                speakCurrentSentenceAndAutoAdvance()
+            }
+            return
+        }
+
+        // Pre-warm the recognizer while TTS is playing to reduce startup latency
+        ensureRecognizerWarm()
 
         // Store target words locally only - don't set in state until TTS finishes
         // Setting targetWord in state while TTS is playing causes "Your turn!" to show prematurely
@@ -1654,6 +1693,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 isSpeakingTargetWord = false
             )
             nextSentence()
+            // Continue reading the next sentence (same as normal TTS completion flow)
+            if (_state.value.isPlaying && !_state.value.needsMorePages) {
+                speakCurrentSentence()
+            }
             return
         }
 
