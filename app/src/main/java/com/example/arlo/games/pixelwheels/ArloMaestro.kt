@@ -52,19 +52,23 @@ class ArloMaestro(
     )
 
     override fun start() {
+        android.util.Log.d("ArloMaestro", "start() - pushing SelectTrackScreen")
         // Go directly to track selection (skip main menu)
         game.pushScreen(createSelectTrackScreen())
     }
 
     private fun createSelectTrackScreen(): Screen {
+        android.util.Log.d("ArloMaestro", "createSelectTrackScreen()")
         val listener = object : SelectTrackScreen.Listener {
             override fun onBackPressed() {
+                android.util.Log.d("ArloMaestro", "SelectTrackScreen.onBackPressed - exiting game")
                 // Back from track selection = exit game entirely
                 stopEnoughInputChecker()
                 game.showMainMenu() // This will trigger our exit callback
             }
 
             override fun onTrackSelected(track: Track) {
+                android.util.Log.d("ArloMaestro", "onTrackSelected: ${track.id}")
                 gameInfoBuilder.setTrack(track)
                 game.replaceScreen(createSelectVehicleScreen())
             }
@@ -73,15 +77,19 @@ class ArloMaestro(
     }
 
     private fun createSelectVehicleScreen(): Screen {
+        android.util.Log.d("ArloMaestro", "createSelectVehicleScreen()")
         val listener = object : SelectVehicleScreen.Listener {
             override fun onBackPressed() {
+                android.util.Log.d("ArloMaestro", "SelectVehicleScreen.onBackPressed - back to track selection")
                 game.replaceScreen(createSelectTrackScreen())
             }
 
             override fun onPlayerSelected(player: GameInfo.Player) {
+                android.util.Log.d("ArloMaestro", "onPlayerSelected: ${player.vehicleId}")
                 val players = GdxArray<GameInfo.Player>()
                 players.add(player)
                 gameInfoBuilder.setPlayers(players)
+                android.util.Log.d("ArloMaestro", "Replacing screen with RaceScreen")
                 game.replaceScreen(createRaceScreen())
             }
         }
@@ -89,38 +97,47 @@ class ArloMaestro(
     }
 
     private fun createRaceScreen(): Screen {
+        android.util.Log.d("ArloMaestro", "createRaceScreen() - building gameInfo")
         val gameInfo = gameInfoBuilder.build()
+        android.util.Log.d("ArloMaestro", "gameInfo built, track=${gameInfo.track?.id}")
 
         val listener = object : RaceScreen.Listener {
             override fun onRestartPressed() {
+                android.util.Log.d("ArloMaestro", "RaceScreen.onRestartPressed")
                 // Restart = same race, doesn't count toward limit
                 (game.screen as? RaceScreen)?.forgetTrack()
                 game.replaceScreen(createRaceScreen())
             }
 
             override fun onQuitPressed() {
+                android.util.Log.d("ArloMaestro", "RaceScreen.onQuitPressed - exiting game")
                 // Quit = exit game entirely
                 stopEnoughInputChecker()
                 game.showMainMenu()
             }
 
             override fun onNextTrackPressed() {
+                android.util.Log.d("ArloMaestro", "RaceScreen.onNextTrackPressed - race finished")
                 // Race finished - notify callback with position (1 = first place)
                 // Note: We pass 1 as position - could extract actual from race results if needed
                 onRaceFinished(1)
 
                 val completedRaces = currentRaceCount()
+                android.util.Log.d("ArloMaestro", "completedRaces=$completedRaces, maxRaces=$maxRaces")
                 if (completedRaces >= maxRaces) {
                     // All races done - exit to Arlo
+                    android.util.Log.d("ArloMaestro", "All races complete - exiting")
                     stopEnoughInputChecker()
                     game.showMainMenu()
                 } else {
                     // More races allowed - let them pick next track
+                    android.util.Log.d("ArloMaestro", "More races allowed - back to track selection")
                     game.replaceScreen(createSelectTrackScreen())
                 }
             }
         }
 
+        android.util.Log.d("ArloMaestro", "Creating RaceScreen instance")
         return RaceScreen(game, listener, gameInfo)
     }
 }

@@ -179,14 +179,20 @@ class StatsDashboardFragment : Fragment() {
     }
 
     private fun launchGame() {
+        android.util.Log.d("StatsDashboard", "launchGame() called")
         viewLifecycleOwner.lifecycleScope.launch {
             val session = withContext(Dispatchers.IO) {
                 gameRewardsManager.claimReward()
             }
 
+            android.util.Log.d("StatsDashboard", "claimReward returned session: $session")
+
             if (session != null) {
+                android.util.Log.d("StatsDashboard", "Launching PixelWheels with session: ${session.sessionId}, maxRaces: ${session.maxRaces}")
                 val intent = pixelWheelsProvider.createLaunchIntent(requireContext(), session)
                 gameLauncher.launch(intent)
+            } else {
+                android.util.Log.w("StatsDashboard", "Session is null - cannot launch game")
             }
         }
     }

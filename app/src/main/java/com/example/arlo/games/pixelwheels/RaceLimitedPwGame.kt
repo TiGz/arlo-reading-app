@@ -38,24 +38,32 @@ class RaceLimitedPwGame(
 
     private var racesCompleted = 0
     private var maestro: ArloMaestro? = null
+    private var isInitialized = false  // Track if we've completed initialization
 
     override fun create() {
+        android.util.Log.d("RaceLimitedPwGame", "create() called - calling super.create()")
         super.create()
+        android.util.Log.d("RaceLimitedPwGame", "super.create() complete - starting ArloQuickRace")
         // Override: Skip main menu, start quick race immediately
         startArloQuickRace()
+        isInitialized = true
+        android.util.Log.d("RaceLimitedPwGame", "Initialization complete, isInitialized=true")
     }
 
     private fun startArloQuickRace() {
+        android.util.Log.d("RaceLimitedPwGame", "startArloQuickRace() - creating ArloMaestro with maxRaces=$maxRaces")
         // Use our custom maestro that handles race limits
         maestro = ArloMaestro(
             game = this,
             playerCount = 1, // Single player only for kids
             onRaceFinished = { position ->
                 racesCompleted++
+                android.util.Log.d("RaceLimitedPwGame", "Race finished! position=$position, racesCompleted=$racesCompleted/$maxRaces")
                 onRaceComplete(position)
 
                 if (racesCompleted >= maxRaces) {
                     // All races done - exit game
+                    android.util.Log.d("RaceLimitedPwGame", "All races complete - calling onAllRacesComplete")
                     onAllRacesComplete()
                 }
                 // Otherwise ArloMaestro handles next race
@@ -63,13 +71,22 @@ class RaceLimitedPwGame(
             maxRaces = maxRaces,
             currentRaceCount = { racesCompleted }
         )
+        android.util.Log.d("RaceLimitedPwGame", "ArloMaestro created - calling start()")
         maestro?.start()
+        android.util.Log.d("RaceLimitedPwGame", "ArloMaestro.start() complete")
     }
 
     override fun showMainMenu() {
-        // Override: Block return to main menu
-        // When user tries to quit, we exit the game entirely
-        onGameExit()
+        android.util.Log.d("RaceLimitedPwGame", "showMainMenu() called - isInitialized=$isInitialized")
+        // PwGame.create() calls showMainMenu() internally during initialization
+        // Only trigger exit if we've completed our initialization
+        if (isInitialized) {
+            android.util.Log.d("RaceLimitedPwGame", "Triggering onGameExit")
+            onGameExit()
+        } else {
+            android.util.Log.d("RaceLimitedPwGame", "Ignoring showMainMenu during initialization")
+            // Do nothing - we'll start ArloQuickRace after super.create() returns
+        }
     }
 
     fun getRacesCompleted(): Int = racesCompleted

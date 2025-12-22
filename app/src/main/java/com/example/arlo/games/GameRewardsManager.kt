@@ -71,7 +71,13 @@ class GameRewardsManager(
         val today = statsRepository.getTodayStats()
         val parentSettings = statsRepository.getParentSettings()
 
-        if (!today.goalMet) return null
+        android.util.Log.d("GameRewardsManager", "claimReward: goalMet=${today.goalMet}, gameRewardClaimed=${today.gameRewardClaimed}, racesEarned=${today.racesEarned}, racesUsed=${today.racesUsed}")
+        android.util.Log.d("GameRewardsManager", "parentSettings: gameRewardsEnabled=${parentSettings.gameRewardsEnabled}, maxRacesPerDay=${parentSettings.maxRacesPerDay}")
+
+        if (!today.goalMet) {
+            android.util.Log.w("GameRewardsManager", "Goal not met - returning null")
+            return null
+        }
 
         val racesEarned = if (!today.gameRewardClaimed) {
             calculateRacesEarned(today, parentSettings)
@@ -79,7 +85,12 @@ class GameRewardsManager(
             today.racesEarned - today.racesUsed
         }
 
-        if (racesEarned <= 0) return null
+        android.util.Log.d("GameRewardsManager", "Calculated racesEarned: $racesEarned")
+
+        if (racesEarned <= 0) {
+            android.util.Log.w("GameRewardsManager", "No races earned - returning null")
+            return null
+        }
 
         // Update stats to mark reward as claimed
         statsRepository.claimGameReward(racesEarned)

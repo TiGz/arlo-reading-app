@@ -17,6 +17,9 @@ val localProperties = Properties().apply {
 // LibGDX version - must match PixelWheels (pinned for tablet stability)
 val gdxVersion = "1.9.14"
 
+// Configuration for LibGDX native libraries (need to be extracted from JARs)
+val natives: Configuration by configurations.creating
+
 android {
     namespace = "com.example.arlo"
     compileSdk = 35
@@ -69,10 +72,11 @@ android {
         buildConfig = true
     }
 
-    // Include PixelWheels assets for the game
+    // Include PixelWheels assets and native libraries for the game
     sourceSets {
         named("main") {
             assets.srcDirs("src/main/assets", "../pixelwheels/android/assets")
+            jniLibs.srcDirs("libs")
         }
     }
 }
@@ -130,12 +134,13 @@ dependencies {
     implementation("com.badlogicgames.gdx:gdx-freetype:$gdxVersion")
 
     // LibGDX native libraries - ARM only for Fire tablets
-    implementation("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a")
-    implementation("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a")
-    implementation("com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-arm64-v8a")
-    implementation("com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a")
-    implementation("com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a")
-    implementation("com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-armeabi-v7a")
+    // These are extracted by the copyAndroidNatives task below
+    natives("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a")
+    natives("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a")
+    natives("com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-arm64-v8a")
+    natives("com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a")
+    natives("com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a")
+    natives("com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-armeabi-v7a")
 
     // LibGDX controllers (used by PixelWheels)
     implementation("com.badlogicgames.gdx-controllers:gdx-controllers-core:2.2.2")
@@ -144,4 +149,34 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+}
+
+// Task to extract LibGDX native libraries from JARs to libs/ directory
+// This is required because LibGDX 1.9.14 distributes natives as JAR files
+tasks.register("copyAndroidNatives") {
+    doFirst {
+        val libsDir = file("libs")
+        file("libs/arm64-v8a").mkdirs()
+        file("libs/armeabi-v7a").mkdirs()
+
+        natives.files.forEach { jar ->
+            val outputDir = when {
+                jar.name.endsWith("natives-arm64-v8a.jar") -> file("libs/arm64-v8a")
+                jar.name.endsWith("natives-armeabi-v7a.jar") -> file("libs/armeabi-v7a")
+                else -> null
+            }
+            if (outputDir != null) {
+                copy {
+                    from(zipTree(jar))
+                    into(outputDir)
+                    include("*.so")
+                }
+            }
+        }
+    }
+}
+
+// Ensure natives are extracted before packaging
+tasks.matching { it.name.startsWith("merge") && it.name.contains("JniLibFolders") }.configureEach {
+    dependsOn("copyAndroidNatives")
 }

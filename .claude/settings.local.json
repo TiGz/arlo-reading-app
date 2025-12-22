@@ -31,7 +31,29 @@
       "Bash(git subtree:*)",
       "Bash(./gradlew:*)",
       "Bash(xargs cat:*)",
-      "Bash(~/Library/Android/sdk/platform-tools/adb devices)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(app/src/main/java/com/example/arlo/ParentSettingsDialogFragment.kt )",
+      "Bash(app/src/main/java/com/example/arlo/StatsDashboardFragment.kt )",
+      "Bash(app/src/main/java/com/example/arlo/data/ReadingStats.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/ConfettiView.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/GameRewardsManager.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/GameSession.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/GameUnlockDialog.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/RaceCompleteDialog.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/pixelwheels/PixelWheelsActivity.kt )",
+      "Bash(app/src/main/java/com/example/arlo/games/pixelwheels/PixelWheelsProvider.kt )",
+      "Bash(app/src/main/res/drawable/bg_speed_icon_coral.xml )",
+      "Bash(app/src/main/res/drawable/bg_value_badge_coral.xml )",
+      "Bash(app/src/main/res/layout/dialog_game_unlock.xml )",
+      "Bash(app/src/main/res/layout/dialog_parent_settings.xml )",
+      "Bash(app/src/main/res/layout/dialog_race_complete.xml )",
+      "Bash(app/src/main/res/layout/fragment_stats_dashboard.xml )",
+      "Bash(app/src/main/res/values/themes.xml )",
+      "Bash(plans/pixelwheels-integration.md)",
+      "Bash(unzip:*)",
+      "Bash(cat:*)"
     ]
   }
 }

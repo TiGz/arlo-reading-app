@@ -48,6 +48,7 @@ class PixelWheelsActivity : AndroidApplication() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        android.util.Log.d("PixelWheelsActivity", "onCreate called")
 
         // Keep screen on during game
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -57,6 +58,8 @@ class PixelWheelsActivity : AndroidApplication() {
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
         startedAt = System.currentTimeMillis()
 
+        android.util.Log.d("PixelWheelsActivity", "maxRaces=$maxRaces, sessionId=$sessionId")
+
         val config = AndroidApplicationConfiguration().apply {
             useImmersiveMode = true
             hideStatusBar = true
@@ -64,6 +67,8 @@ class PixelWheelsActivity : AndroidApplication() {
             useAccelerometer = false
             useCompass = false
         }
+
+        android.util.Log.d("PixelWheelsActivity", "Creating RaceLimitedPwGame...")
 
         // Create our race-limited game variant
         game = RaceLimitedPwGame(
@@ -73,7 +78,9 @@ class PixelWheelsActivity : AndroidApplication() {
             onGameExit = { finishWithResult() }
         )
 
+        android.util.Log.d("PixelWheelsActivity", "Calling initialize(game, config)...")
         initialize(game, config)
+        android.util.Log.d("PixelWheelsActivity", "initialize complete")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
