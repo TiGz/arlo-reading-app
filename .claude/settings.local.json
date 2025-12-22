@@ -65,7 +65,12 @@
       "Bash(git -C /Users/adam/dev/personal/arlo-reading-app log --oneline --all --grep=\"pixelwheels\\\\|PixelWheels\" -i)",
       "Bash(git -C /Users/adam/dev/personal/arlo-reading-app log --oneline --all)",
       "Bash(find:*)",
-      "Bash(git -C /Users/adam/dev/personal/arlo-reading-app diff pixelwheels/core/src/com/agateau/pixelwheels/racescreen/Hud.java)"
+      "Bash(git -C /Users/adam/dev/personal/arlo-reading-app diff pixelwheels/core/src/com/agateau/pixelwheels/racescreen/Hud.java)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell setprop log.tag.TTSService VERBOSE)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell setprop log.tag.TTSCacheManager VERBOSE)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell setprop log.tag.UnifiedReaderVM VERBOSE)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -v brief \"*:V\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell run-as com.example.arlo cat shared_prefs/tts_prefs.xml)"
     ]
   }
 }
