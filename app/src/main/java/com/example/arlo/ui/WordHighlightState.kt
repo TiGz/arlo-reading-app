@@ -17,8 +17,14 @@ enum class WordHighlightState {
     /** Actively listening for user to speak this word - pulse with mic indicator */
     LISTENING,
 
-    /** User spoke the word correctly - celebratory bounce */
-    SUCCESS,
+    /** User spoke correctly on 1st try (no TTS help) - gold celebration */
+    SUCCESS_GOLD,
+
+    /** User spoke correctly on 2nd/3rd try (no TTS help) - silver celebration */
+    SUCCESS_SILVER,
+
+    /** User spoke correctly after TTS help - bronze celebration */
+    SUCCESS_BRONZE,
 
     /** User spoke incorrectly - error shake */
     ERROR

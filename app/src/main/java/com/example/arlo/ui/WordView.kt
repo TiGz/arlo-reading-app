@@ -38,6 +38,11 @@ class WordView @JvmOverloads constructor(
     private val successColor by lazy { ContextCompat.getColor(context, R.color.success) }
     private val errorColor by lazy { ContextCompat.getColor(context, R.color.error) }
 
+    // Star tier colors for success animations
+    private val goldColor by lazy { ContextCompat.getColor(context, R.color.star_gold_light) }
+    private val silverColor by lazy { ContextCompat.getColor(context, R.color.star_silver_light) }
+    private val bronzeColor by lazy { ContextCompat.getColor(context, R.color.star_bronze_light) }
+
     // Animation constants - tuned for children's reading app
     companion object {
         // TTS speaking: word grows then shrinks
@@ -49,9 +54,15 @@ class WordView @JvmOverloads constructor(
         const val PULSE_SCALE = 1.12f
         const val PULSE_DURATION = 1000L
 
-        // Success: celebratory bounce
-        const val SUCCESS_SCALE = 1.2f
-        const val SUCCESS_DURATION = 400L
+        // Success tiers: gold > silver > bronze celebrations
+        const val GOLD_SCALE = 1.25f
+        const val GOLD_DURATION = 500L
+
+        const val SILVER_SCALE = 1.18f
+        const val SILVER_DURATION = 400L
+
+        const val BRONZE_SCALE = 1.12f
+        const val BRONZE_DURATION = 350L
 
         // Error: shake animation
         const val SHAKE_DISTANCE = 8f
@@ -96,7 +107,9 @@ class WordView @JvmOverloads constructor(
             WordHighlightState.TTS_SPEAKING -> animateTTSSpeaking()
             WordHighlightState.USER_TURN -> animateUserTurn()
             WordHighlightState.LISTENING -> animateListening()
-            WordHighlightState.SUCCESS -> animateSuccess()
+            WordHighlightState.SUCCESS_GOLD -> animateSuccessGold()
+            WordHighlightState.SUCCESS_SILVER -> animateSuccessSilver()
+            WordHighlightState.SUCCESS_BRONZE -> animateSuccessBronze()
             WordHighlightState.ERROR -> animateError()
         }
     }
@@ -179,35 +192,110 @@ class WordView @JvmOverloads constructor(
     }
 
     /**
-     * User spoke correctly - celebratory bounce with green flash.
+     * Gold star celebration - biggest bounce + double pulse for 1st try success.
      */
-    private fun animateSuccess() {
-        // Flash green
-        setBackgroundColor(successColor)
+    private fun animateSuccessGold() {
+        setBackgroundColor(goldColor)
 
-        // Bounce animation on Y axis for "jump" effect
+        // Big bounce on Y axis
         val bounceY = ObjectAnimator.ofFloat(
             this, "translationY",
-            0f, -16f, 0f, -8f, 0f
+            0f, -24f, 0f, -12f, 0f, -6f, 0f
         ).apply {
-            duration = SUCCESS_DURATION
+            duration = GOLD_DURATION
             interpolator = BounceInterpolator()
         }
 
-        // Scale bounce
+        // Large scale pulse
         val scaleX = ObjectAnimator.ofFloat(
             this, "scaleX",
-            1.0f, SUCCESS_SCALE, 1.0f
+            1.0f, GOLD_SCALE, 1.0f
         ).apply {
-            duration = SUCCESS_DURATION
+            duration = GOLD_DURATION
             interpolator = BounceInterpolator()
         }
 
         val scaleY = ObjectAnimator.ofFloat(
             this, "scaleY",
-            1.0f, SUCCESS_SCALE, 1.0f
+            1.0f, GOLD_SCALE, 1.0f
         ).apply {
-            duration = SUCCESS_DURATION
+            duration = GOLD_DURATION
+            interpolator = BounceInterpolator()
+        }
+
+        currentAnimator = AnimatorSet().apply {
+            playTogether(bounceY, scaleX, scaleY)
+            start()
+        }
+    }
+
+    /**
+     * Silver star celebration - medium bounce for 2nd/3rd try success.
+     */
+    private fun animateSuccessSilver() {
+        setBackgroundColor(silverColor)
+
+        // Medium bounce on Y axis
+        val bounceY = ObjectAnimator.ofFloat(
+            this, "translationY",
+            0f, -16f, 0f, -8f, 0f
+        ).apply {
+            duration = SILVER_DURATION
+            interpolator = BounceInterpolator()
+        }
+
+        // Medium scale pulse
+        val scaleX = ObjectAnimator.ofFloat(
+            this, "scaleX",
+            1.0f, SILVER_SCALE, 1.0f
+        ).apply {
+            duration = SILVER_DURATION
+            interpolator = BounceInterpolator()
+        }
+
+        val scaleY = ObjectAnimator.ofFloat(
+            this, "scaleY",
+            1.0f, SILVER_SCALE, 1.0f
+        ).apply {
+            duration = SILVER_DURATION
+            interpolator = BounceInterpolator()
+        }
+
+        currentAnimator = AnimatorSet().apply {
+            playTogether(bounceY, scaleX, scaleY)
+            start()
+        }
+    }
+
+    /**
+     * Bronze star celebration - gentle bounce for success after TTS help.
+     */
+    private fun animateSuccessBronze() {
+        setBackgroundColor(bronzeColor)
+
+        // Gentle bounce on Y axis
+        val bounceY = ObjectAnimator.ofFloat(
+            this, "translationY",
+            0f, -10f, 0f
+        ).apply {
+            duration = BRONZE_DURATION
+            interpolator = BounceInterpolator()
+        }
+
+        // Subtle scale pulse
+        val scaleX = ObjectAnimator.ofFloat(
+            this, "scaleX",
+            1.0f, BRONZE_SCALE, 1.0f
+        ).apply {
+            duration = BRONZE_DURATION
+            interpolator = BounceInterpolator()
+        }
+
+        val scaleY = ObjectAnimator.ofFloat(
+            this, "scaleY",
+            1.0f, BRONZE_SCALE, 1.0f
+        ).apply {
+            duration = BRONZE_DURATION
             interpolator = BounceInterpolator()
         }
 

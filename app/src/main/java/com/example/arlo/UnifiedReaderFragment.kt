@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
+import com.example.arlo.data.StarType
 import com.example.arlo.ui.WordHighlightState
 import com.example.arlo.ui.VoiceWaveView
 import android.view.LayoutInflater
@@ -379,7 +380,15 @@ class UnifiedReaderFragment : Fragment() {
                     // Determine the word highlight state (simple highlight, no animation)
                     val highlightState = when {
                         state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.LISTENING -> WordHighlightState.LISTENING
-                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK && state.lastAttemptSuccess == true -> WordHighlightState.SUCCESS
+                        state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK && state.lastAttemptSuccess == true -> {
+                            // Use gold/silver/bronze highlight based on star type earned
+                            when (state.lastStarType) {
+                                StarType.GOLD -> WordHighlightState.SUCCESS_GOLD
+                                StarType.SILVER -> WordHighlightState.SUCCESS_SILVER
+                                StarType.BRONZE -> WordHighlightState.SUCCESS_BRONZE
+                                StarType.NONE -> WordHighlightState.SUCCESS_BRONZE  // Fallback
+                            }
+                        }
                         state.collaborativeState == UnifiedReaderViewModel.CollaborativeState.FEEDBACK && state.lastAttemptSuccess == false -> WordHighlightState.ERROR
                         else -> WordHighlightState.USER_TURN
                     }

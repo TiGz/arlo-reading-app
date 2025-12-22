@@ -119,6 +119,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val attemptCount: Int = 0,
         val retryCycleCount: Int = 0,  // Tracks how many times TTS has read the word (max 3 then give up)
         val lastAttemptSuccess: Boolean? = null,  // null = no attempt yet, true = success, false = failure
+        val lastStarType: StarType = StarType.NONE,  // Star type earned on last successful attempt
         val micLevel: Int = 0,  // 0-100 mic input level for visual feedback
         val isSpeakingTargetWord: Boolean = false,  // True when TTS is reading target word after failures
         val ttsHasPronouncedTargetWord: Boolean = false,  // True if TTS has read this word (affects star color)
@@ -1533,6 +1534,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             val currentStreak = current.sessionStats.currentStreak
             val ttsPronouncedWord = current.ttsHasPronouncedTargetWord
 
+            // Calculate star type immediately for UI highlight (same logic as in repository)
+            val starType = StarType.determine(newAttemptCount, true, ttsPronouncedWord)
+
             viewModelScope.launch(Dispatchers.IO) {
                 val pageId = current.currentPage?.id ?: 0L
                 val sentenceIndex = current.currentSentenceIndex
@@ -1587,6 +1591,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
             _state.value = current.copy(
                 collaborativeState = CollaborativeState.FEEDBACK,
                 lastAttemptSuccess = true,
+                lastStarType = starType,
                 attemptCount = newAttemptCount
             )
 
