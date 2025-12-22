@@ -69,6 +69,14 @@ class RaceCreditsManager(context: Context) {
         prefs.edit().putInt(KEY_AVAILABLE_RACES, available).apply()
     }
 
+    /**
+     * Clear all race credits (for stats reset).
+     */
+    fun clearAll() {
+        android.util.Log.d(TAG, "clearAll: Resetting race credits")
+        prefs.edit().clear().apply()
+    }
+
     companion object {
         private const val TAG = "RaceCreditsManager"
         private const val PREFS_NAME = "race_credits"

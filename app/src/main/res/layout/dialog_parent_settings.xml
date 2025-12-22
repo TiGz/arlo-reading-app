@@ -1203,6 +1203,117 @@
 
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- ═══════════════════════════════════════════ -->
+                <!-- Section 5: Dangerous Actions (Parent Only) -->
+                <!-- ═══════════════════════════════════════════ -->
+
+                <LinearLayout
+                    android:id="@+id/sectionDangerousActionsHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
+
+                    <View
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_section_icon_error" />
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginStart="-25dp"
+                        android:src="@drawable/ic_warning"
+                        app:tint="@color/error" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:text="Dangerous Actions"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium"
+                        android:letterSpacing="0.02" />
+
+                </LinearLayout>
+
+                <!-- Dangerous Actions Card (Parent Only) -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardDangerousActions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp"
+                    app:cardBackgroundColor="@color/surface"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1.5dp"
+                    app:strokeColor="@color/settings_card_stroke">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Reset Statistics"
+                                android:textSize="15sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_primary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="Clear all stars, points, streaks, and achievements. Your books and pages will be preserved."
+                                android:textSize="13sp"
+                                android:textColor="@color/text_secondary"
+                                android:lineSpacingExtra="2dp" />
+
+                        </LinearLayout>
+
+                        <!-- Warning message -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal"
+                            android:layout_marginTop="16dp"
+                            android:text="⚠️ This cannot be undone"
+                            android:textSize="12sp"
+                            android:textColor="@color/error"
+                            android:fontFamily="sans-serif-medium" />
+
+                        <!-- Reset Button -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnResetStats"
+                            style="@style/Widget.Material3.Button"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="12dp"
+                            android:text="Reset All Statistics"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            app:backgroundTint="@color/error"
+                            app:cornerRadius="12dp"
+                            app:icon="@drawable/ic_delete"
+                            app:iconGravity="textStart"
+                            app:iconPadding="8dp"
+                            app:iconTint="@color/white" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
             </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>

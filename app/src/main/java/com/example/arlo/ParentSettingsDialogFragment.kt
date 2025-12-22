@@ -14,12 +14,15 @@ import androidx.lifecycle.lifecycleScope
 import com.example.arlo.data.ParentSettings
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.databinding.DialogParentSettingsBinding
+import com.example.arlo.games.RaceCreditsManager
 import com.example.arlo.databinding.ItemMilestoneSliderBinding
 import com.example.arlo.tts.TTSPreferences
 import com.example.arlo.tts.TTSService
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -140,6 +143,8 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.cardReadingModes.isVisible = false
             binding.sectionGameRewardsHeader.isVisible = false
             binding.cardGameRewards.isVisible = false
+            binding.sectionDangerousActionsHeader.isVisible = false
+            binding.cardDangerousActions.isVisible = false
         } else {
             // Parent Mode: Full "Parent Settings" with all options
             binding.tvSettingsTitle.text = "Parent Settings"
@@ -152,6 +157,8 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.cardReadingModes.isVisible = true
             binding.sectionGameRewardsHeader.isVisible = true
             binding.cardGameRewards.isVisible = true
+            binding.sectionDangerousActionsHeader.isVisible = true
+            binding.cardDangerousActions.isVisible = true
         }
     }
 
@@ -422,6 +429,11 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             binding.headerMilestoneRewards.setOnClickListener {
                 toggleMilestoneSection()
             }
+
+            // Reset stats button
+            binding.btnResetStats.setOnClickListener {
+                showResetConfirmationDialog()
+            }
         }
 
         // Speech rate slider with dynamic label and value
@@ -501,6 +513,78 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
 
         // Show/hide content
         binding.layoutMilestoneContent.isVisible = isMilestoneExpanded
+    }
+
+    /**
+     * Show confirmation dialog before resetting all stats.
+     */
+    private fun showResetConfirmationDialog() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Reset All Statistics?")
+            .setMessage("This will clear all stars, points, streaks, achievements, and reading progress.\n\nYour books and pages will be preserved.\n\nThis action cannot be undone.")
+            .setNegativeButton("Cancel") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setPositiveButton("Reset") { dialog, _ ->
+                performStatsReset()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    /**
+     * Perform the actual stats reset.
+     */
+    private fun performStatsReset() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                // Reset all reading stats
+                statsRepository.resetAllStats()
+
+                // Clear race credits SharedPreferences
+                RaceCreditsManager.getInstance(requireContext()).clearAll()
+
+                // Delete PixelWheels game data files (unlocked vehicles, lap times, etc.)
+                deletePixelWheelsData()
+            }
+
+            // Show success feedback
+            Snackbar.make(
+                binding.root,
+                "All statistics have been reset",
+                Snackbar.LENGTH_SHORT
+            ).show()
+
+            // Dismiss the settings dialog
+            dismiss()
+        }
+    }
+
+    /**
+     * Delete PixelWheels game data files (gamestats.json and pixelwheels.conf).
+     * This resets vehicle unlocks, lap times, and game preferences.
+     */
+    private fun deletePixelWheelsData() {
+        val context = requireContext()
+
+        // Delete gamestats.json (vehicle unlocks, lap times, race history)
+        val gameStatsFile = java.io.File(context.filesDir, "gamestats.json")
+        if (gameStatsFile.exists()) {
+            val deleted = gameStatsFile.delete()
+            android.util.Log.d("ParentSettings", "Deleted gamestats.json: $deleted")
+        }
+
+        // Delete pixelwheels.conf (game preferences)
+        val configFile = java.io.File(context.filesDir, "pixelwheels.conf")
+        if (configFile.exists()) {
+            val deleted = configFile.delete()
+            android.util.Log.d("ParentSettings", "Deleted pixelwheels.conf: $deleted")
+        }
+
+        // Also clear any PixelWheels SharedPreferences
+        val pwPrefs = context.getSharedPreferences("pixelwheels", android.content.Context.MODE_PRIVATE)
+        pwPrefs.edit().clear().apply()
+        android.util.Log.d("ParentSettings", "Cleared PixelWheels SharedPreferences")
     }
 
     private fun saveSettings() {

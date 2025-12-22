@@ -1324,4 +1324,46 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
             updatedAt = System.currentTimeMillis()
         ))
     }
+
+    // ==================== RESET ALL STATS ====================
+
+    /**
+     * Reset all reading statistics while preserving book content.
+     * This clears:
+     * - Daily stats (stars, points, streaks)
+     * - Collaborative attempts (attempt history)
+     * - Difficult words (word mastery tracking)
+     * - Completed sentences (star deduplication)
+     * - Achievements (reset progress to zero)
+     * - Weekly goals
+     * - Book stats (per-book aggregates)
+     * - Streak states
+     * - Game sessions (play history)
+     * - Milestone claims
+     * - Sentence completion state
+     * - Reading sessions (time tracking)
+     *
+     * Does NOT touch:
+     * - Books table (library)
+     * - Pages table (OCR content, images)
+     * - Parent settings (configuration)
+     */
+    suspend fun resetAllStats() {
+        // Delete all stats tables
+        dao.deleteAllDailyStats()
+        dao.deleteAllCollaborativeAttempts()
+        dao.deleteAllDifficultWords()
+        dao.deleteAllCompletedSentences()
+        dao.deleteAllAchievements()
+        dao.deleteAllWeeklyGoals()
+        dao.deleteAllBookStats()
+        dao.deleteAllStreakState()
+        dao.deleteAllGameSessions()
+        dao.deleteAllMilestoneClaims()
+        dao.deleteAllSentenceCompletionState()
+        dao.deleteAllReadingSessions()
+
+        // Re-initialize default achievements (empty progress)
+        initializeAchievements()
+    }
 }

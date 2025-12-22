@@ -573,6 +573,44 @@ interface ReadingStatsDao {
           AND wasCompletedSuccessfully = 0
     """)
     suspend fun isPageFullyCompleted(bookId: Long, pageId: Long): Boolean
+
+    // ==================== RESET ALL STATS ====================
+
+    @Query("DELETE FROM daily_stats")
+    suspend fun deleteAllDailyStats()
+
+    @Query("DELETE FROM collaborative_attempts")
+    suspend fun deleteAllCollaborativeAttempts()
+
+    @Query("DELETE FROM difficult_words")
+    suspend fun deleteAllDifficultWords()
+
+    @Query("DELETE FROM completed_sentences")
+    suspend fun deleteAllCompletedSentences()
+
+    @Query("DELETE FROM achievements")
+    suspend fun deleteAllAchievements()
+
+    @Query("DELETE FROM weekly_goals")
+    suspend fun deleteAllWeeklyGoals()
+
+    @Query("DELETE FROM book_stats")
+    suspend fun deleteAllBookStats()
+
+    @Query("DELETE FROM streak_state")
+    suspend fun deleteAllStreakState()
+
+    @Query("DELETE FROM game_sessions")
+    suspend fun deleteAllGameSessions()
+
+    @Query("DELETE FROM milestone_claims")
+    suspend fun deleteAllMilestoneClaims()
+
+    @Query("DELETE FROM sentence_completion_state")
+    suspend fun deleteAllSentenceCompletionState()
+
+    @Query("DELETE FROM reading_sessions")
+    suspend fun deleteAllReadingSessions()
 }
 
 /**

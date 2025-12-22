@@ -70,7 +70,14 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb shell setprop log.tag.TTSCacheManager VERBOSE)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell setprop log.tag.UnifiedReaderVM VERBOSE)",
       "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -v brief \"*:V\")",
-      "Bash(~/Library/Android/sdk/platform-tools/adb shell run-as com.example.arlo cat shared_prefs/tts_prefs.xml)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell run-as com.example.arlo cat shared_prefs/tts_prefs.xml)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(git push:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 2000)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell \"run-as com.example.arlo ls -la shared_prefs/\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -b crash -d)"
     ]
   }
 }
