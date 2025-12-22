@@ -1,0 +1,721 @@
+
+uiskin.png
+size: 1009, 551
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+background
+  rotate: false
+  xy: 943, 485
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+best-1
+  rotate: false
+  xy: 943, 419
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+best-1-small
+  rotate: false
+  xy: 435, 468
+  size: 24, 24
+  orig: 24, 24
+  offset: 0, 0
+  index: -1
+best-2
+  rotate: false
+  xy: 711, 302
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+best-2-small
+  rotate: false
+  xy: 964, 88
+  size: 24, 24
+  orig: 24, 24
+  offset: 0, 0
+  index: -1
+best-3
+  rotate: false
+  xy: 788, 136
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+best-3-small
+  rotate: false
+  xy: 964, 62
+  size: 24, 24
+  orig: 24, 24
+  offset: 0, 0
+  index: -1
+championship-finished-1
+  rotate: false
+  xy: 716, 368
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 0
+championship-finished-1
+  rotate: false
+  xy: 716, 368
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 4
+championship-finished-1
+  rotate: false
+  xy: 409, 141
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 1
+championship-finished-1
+  rotate: false
+  xy: 409, 141
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 3
+championship-finished-1
+  rotate: false
+  xy: 404, 41
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 2
+championship-finished-1
+  rotate: false
+  xy: 465, 41
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 5
+championship-finished-1
+  rotate: false
+  xy: 470, 153
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 6
+championship-finished-1
+  rotate: false
+  xy: 531, 153
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 7
+championship-finished-2
+  rotate: false
+  xy: 526, 53
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 0
+championship-finished-2
+  rotate: false
+  xy: 526, 53
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 4
+championship-finished-2
+  rotate: false
+  xy: 587, 53
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 1
+championship-finished-2
+  rotate: false
+  xy: 587, 53
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 3
+championship-finished-2
+  rotate: false
+  xy: 879, 288
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 2
+championship-finished-2
+  rotate: false
+  xy: 940, 288
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 5
+championship-finished-2
+  rotate: false
+  xy: 592, 153
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 6
+championship-finished-2
+  rotate: false
+  xy: 648, 53
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 7
+championship-finished-3
+  rotate: false
+  xy: 653, 164
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 0
+championship-finished-3
+  rotate: false
+  xy: 653, 164
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 4
+championship-finished-3
+  rotate: false
+  xy: 714, 202
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 1
+championship-finished-3
+  rotate: false
+  xy: 714, 202
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 3
+championship-finished-3
+  rotate: false
+  xy: 775, 202
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 2
+championship-finished-3
+  rotate: false
+  xy: 709, 36
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 5
+championship-finished-3
+  rotate: false
+  xy: 770, 36
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 6
+championship-finished-3
+  rotate: false
+  xy: 831, 36
+  size: 59, 98
+  orig: 59, 98
+  offset: 0, 0
+  index: 7
+championship-icons/city
+  rotate: false
+  xy: 2, 296
+  size: 150, 150
+  orig: 150, 150
+  offset: 0, 0
+  index: -1
+championship-icons/country
+  rotate: false
+  xy: 2, 144
+  size: 150, 150
+  orig: 150, 150
+  offset: 0, 0
+  index: -1
+championship-icons/snow
+  rotate: false
+  xy: 154, 144
+  size: 150, 150
+  orig: 150, 150
+  offset: 0, 0
+  index: -1
+checkbox-off
+  rotate: false
+  xy: 867, 388
+  size: 72, 64
+  orig: 72, 64
+  offset: 0, 0
+  index: -1
+checkbox-on
+  rotate: false
+  xy: 714, 136
+  size: 72, 64
+  orig: 72, 64
+  offset: 0, 0
+  index: -1
+congrats-car
+  rotate: false
+  xy: 435, 494
+  size: 202, 55
+  orig: 202, 55
+  offset: 0, 0
+  index: -1
+focus
+  rotate: false
+  xy: 576, 3
+  size: 48, 48
+  split: 16, 16, 16, 16
+  orig: 48, 48
+  offset: 0, 0
+  index: -1
+focus-1
+  rotate: false
+  xy: 637, 264
+  size: 48, 48
+  split: 16, 16, 16, 16
+  orig: 48, 48
+  offset: 0, 0
+  index: -1
+focus-2
+  rotate: false
+  xy: 896, 162
+  size: 48, 48
+  split: 16, 16, 16, 16
+  orig: 48, 48
+  offset: 0, 0
+  index: -1
+focus-3
+  rotate: false
+  xy: 946, 166
+  size: 48, 48
+  split: 16, 16, 16, 16
+  orig: 48, 48
+  offset: 0, 0
+  index: -1
+focus-4
+  rotate: false
+  xy: 526, 3
+  size: 48, 48
+  split: 16, 16, 16, 16
+  orig: 48, 48
+  offset: 0, 0
+  index: -1
+garage-ground
+  rotate: false
+  xy: 618, 370
+  size: 96, 96
+  orig: 96, 96
+  offset: 0, 0
+  index: -1
+icon-back
+  rotate: false
+  xy: 944, 216
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+icon-config
+  rotate: false
+  xy: 674, 19
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+icon-debug
+  rotate: false
+  xy: 708, 2
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+icon-left
+  rotate: false
+  xy: 742, 2
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+icon-next
+  rotate: false
+  xy: 776, 2
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+icon-restart
+  rotate: false
+  xy: 810, 2
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+icon-right
+  rotate: false
+  xy: 844, 2
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+input-icons/gamepad
+  rotate: false
+  xy: 878, 250
+  size: 52, 36
+  orig: 52, 36
+  offset: 0, 0
+  index: -1
+input-icons/keyboard
+  rotate: false
+  xy: 932, 250
+  size: 52, 36
+  orig: 52, 36
+  offset: 0, 0
+  index: -1
+input-icons/pie
+  rotate: false
+  xy: 836, 209
+  size: 52, 36
+  orig: 52, 36
+  offset: 0, 0
+  index: -1
+input-icons/sides
+  rotate: false
+  xy: 890, 212
+  size: 52, 36
+  orig: 52, 36
+  offset: 0, 0
+  index: -1
+map-icons/be
+  rotate: false
+  xy: 154, 296
+  size: 79, 150
+  orig: 79, 150
+  offset: 0, 0
+  index: -1
+map-icons/city3
+  rotate: false
+  xy: 466, 301
+  size: 150, 88
+  orig: 150, 88
+  offset: 0, 0
+  index: -1
+map-icons/country
+  rotate: false
+  xy: 639, 468
+  size: 150, 81
+  orig: 150, 81
+  offset: 0, 0
+  index: -1
+map-icons/flood
+  rotate: false
+  xy: 387, 303
+  size: 77, 150
+  orig: 77, 150
+  offset: 0, 0
+  index: -1
+map-icons/locked
+  rotate: false
+  xy: 235, 303
+  size: 150, 150
+  orig: 150, 150
+  offset: 0, 0
+  index: -1
+map-icons/race
+  rotate: false
+  xy: 791, 454
+  size: 150, 95
+  orig: 150, 95
+  offset: 0, 0
+  index: -1
+map-icons/river
+  rotate: false
+  xy: 2, 20
+  size: 150, 122
+  orig: 150, 122
+  offset: 0, 0
+  index: -1
+map-icons/snow2
+  rotate: false
+  xy: 466, 391
+  size: 150, 101
+  orig: 150, 101
+  offset: 0, 0
+  index: -1
+map-icons/snow3
+  rotate: false
+  xy: 306, 151
+  size: 101, 150
+  orig: 101, 150
+  offset: 0, 0
+  index: -1
+map-icons/tiny-sur-mer
+  rotate: false
+  xy: 154, 24
+  size: 150, 118
+  orig: 150, 118
+  offset: 0, 0
+  index: -1
+menu-switch-frame
+  rotate: false
+  xy: 618, 314
+  size: 91, 54
+  split: 11, 11, 11, 11
+  orig: 91, 54
+  offset: 0, 0
+  index: -1
+menu-switch-handle
+  rotate: false
+  xy: 777, 343
+  size: 87, 50
+  split: 9, 9, 9, 9
+  orig: 87, 50
+  offset: 0, 0
+  index: -1
+rank-down
+  rotate: false
+  xy: 2, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 0
+rank-down
+  rotate: false
+  xy: 20, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 1
+rank-down
+  rotate: false
+  xy: 38, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 2
+rank-down
+  rotate: false
+  xy: 56, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 3
+rank-same
+  rotate: false
+  xy: 74, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 0
+rank-same
+  rotate: false
+  xy: 92, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 1
+rank-same
+  rotate: false
+  xy: 110, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 2
+rank-same
+  rotate: false
+  xy: 128, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 3
+rank-up
+  rotate: false
+  xy: 146, 2
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 0
+rank-up
+  rotate: false
+  xy: 618, 476
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 1
+rank-up
+  rotate: false
+  xy: 687, 296
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 2
+rank-up
+  rotate: false
+  xy: 940, 40
+  size: 16, 16
+  orig: 16, 16
+  offset: 0, 0
+  index: 3
+rectbutton
+  rotate: false
+  xy: 579, 253
+  size: 56, 46
+  split: 10, 10, 9, 10
+  orig: 56, 46
+  offset: 0, 0
+  index: -1
+rectbutton-disabled
+  rotate: false
+  xy: 463, 253
+  size: 56, 46
+  split: 10, 10, 10, 10
+  pad: 10, 10, 9, 10
+  orig: 56, 46
+  offset: 0, 0
+  index: -1
+rectbutton-down
+  rotate: false
+  xy: 521, 253
+  size: 56, 46
+  split: 10, 10, 10, 10
+  pad: 10, 10, 9, 10
+  orig: 56, 46
+  offset: 0, 0
+  index: -1
+road
+  rotate: false
+  xy: 306, 21
+  size: 96, 128
+  orig: 96, 128
+  offset: 0, 0
+  index: -1
+selected
+  rotate: false
+  xy: 944, 114
+  size: 46, 46
+  split: 16, 16, 16, 16
+  pad: 6, 6, 6, 6
+  orig: 46, 46
+  offset: 0, 0
+  index: -1
+selected-1
+  rotate: false
+  xy: 626, 5
+  size: 46, 46
+  split: 16, 16, 16, 16
+  pad: 6, 6, 6, 6
+  orig: 46, 46
+  offset: 0, 0
+  index: -1
+selected-2
+  rotate: false
+  xy: 896, 114
+  size: 46, 46
+  split: 16, 16, 16, 16
+  pad: 6, 6, 6, 6
+  orig: 46, 46
+  offset: 0, 0
+  index: -1
+selected-3
+  rotate: false
+  xy: 892, 66
+  size: 46, 46
+  split: 16, 16, 16, 16
+  pad: 6, 6, 6, 6
+  orig: 46, 46
+  offset: 0, 0
+  index: -1
+selected-4
+  rotate: false
+  xy: 892, 18
+  size: 46, 46
+  split: 16, 16, 16, 16
+  pad: 6, 6, 6, 6
+  orig: 46, 46
+  offset: 0, 0
+  index: -1
+shop
+  rotate: false
+  xy: 777, 395
+  size: 88, 57
+  orig: 88, 57
+  offset: 0, 0
+  index: -1
+slider-handle
+  rotate: false
+  xy: 940, 58
+  size: 22, 54
+  orig: 22, 54
+  offset: 0, 0
+  index: -1
+speech-bubble
+  rotate: false
+  xy: 228, 455
+  size: 205, 94
+  split: 7, 63, 7, 32
+  pad: 10, 9, 8, 32
+  orig: 205, 94
+  offset: 0, 0
+  index: -1
+support
+  rotate: false
+  xy: 409, 241
+  size: 52, 60
+  orig: 52, 60
+  offset: 0, 0
+  index: -1
+tab-border-left
+  rotate: false
+  xy: 836, 247
+  size: 40, 54
+  split: 0, 5, 0, 0
+  orig: 40, 54
+  offset: 0, 0
+  index: -1
+tab-border-right
+  rotate: false
+  xy: 854, 153
+  size: 40, 54
+  split: 5, 0, 0, 0
+  orig: 40, 54
+  offset: 0, 0
+  index: -1
+tiny-rectbutton
+  rotate: false
+  xy: 464, 22
+  size: 28, 17
+  split: 3, 3, 3, 5
+  orig: 28, 17
+  offset: 0, 0
+  index: -1
+tiny-rectbutton-disabled
+  rotate: false
+  xy: 404, 22
+  size: 28, 17
+  split: 3, 3, 3, 5
+  orig: 28, 17
+  offset: 0, 0
+  index: -1
+tiny-rectbutton-down
+  rotate: false
+  xy: 434, 22
+  size: 28, 17
+  split: 3, 3, 5, 3
+  orig: 28, 17
+  offset: 0, 0
+  index: -1
+title
+  rotate: false
+  xy: 2, 448
+  size: 224, 101
+  orig: 224, 101
+  offset: 0, 0
+  index: -1
+version-number-road-sign
+  rotate: false
+  xy: 777, 303
+  size: 100, 38
+  orig: 100, 38
+  offset: 0, 0
+  index: -1

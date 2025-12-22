@@ -1,7 +1,9 @@
-android/assets/sprites/
-android/assets/maps/*.png
-android/assets/ui/uiskin.atlas
-android/assets/ui/uiskin.png
+# Pre-built assets (normally generated, but we commit them for Arlo integration)
+# Uncomment these lines if you want to regenerate from source:
+# android/assets/sprites/
+# android/assets/maps/*.png
+# android/assets/ui/uiskin.atlas
+# android/assets/ui/uiskin.png
 
 core/assets/
 core/assets-src/sprites/hud/*.png
