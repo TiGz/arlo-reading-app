@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<gdxui>
+    <Config>
+        <ConfigItem id="columnCount">5</ConfigItem>
+        <ConfigItem id="itemWidth">120</ConfigItem>
+        <ConfigItem id="itemHeight">110</ConfigItem>
+    </Config>
+    <AnchorGroup id="root" gridSize="20">
+        <Label id="titleLabel" style="title"
+               topCenter="root.topCenter 0 -1g">Select Your Vehicles</Label>
+
+        <Image tiled="true" atlas="ui" name="garage-ground" topCenter="titleLabel.bottomCenter 0 -1.5"
+            width="960px" height="360px"/>
+
+        <Menu id="menu" topCenter="titleLabel.bottomCenter 0 -2" width="700px"/>
+        <HorizontalGroup id="readyGroup" topCenter="menu.bottomCenter 0 -1" spacing="1g"/>
+    </AnchorGroup>
+</gdxui>

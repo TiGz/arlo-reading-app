@@ -1,0 +1,41 @@
+apply plugin: "java"
+
+dependencies {
+    implementation project(":core")
+    implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+    implementation "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-desktop"
+    implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
+    implementation ("com.badlogicgames.gdx:gdx-tools:$gdxVersion") {
+        // some parts of gdx-tools depends on lwjgl (not lwjgl3), disable them
+        // see https://github.com/libgdx/libgdx/issues/4777
+        exclude group: 'com.badlogicgames.gdx', module: 'gdx-backend-lwjgl'
+    }
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+sourceSets.main.java.srcDirs = [ "src/" ]
+
+project.ext.mainClassName = "Packer"
+project.ext.assetsDir = new File("../android/assets")
+
+task run(dependsOn: classes, type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    standardInput = System.in
+    workingDir = project.assetsDir
+    ignoreExitValue = true
+}
+
+task dist(type: Jar) {
+    from files(sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.output.resourcesDir)
+    from {configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }}
+    from files(project.assetsDir)
+
+    manifest {
+        attributes 'Main-Class': project.mainClassName
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+dist.dependsOn classes

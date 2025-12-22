@@ -1,0 +1,6 @@
+*
+!ci/*
+!tools/aseprite/*
+!requirements.txt
+!gradle/*
+!gradlew

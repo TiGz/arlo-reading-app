@@ -50,6 +50,15 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
         </activity>
+
+        <!-- PixelWheels Game Activity (GPL-3.0+) -->
+        <activity
+            android:name=".games.pixelwheels.PixelWheelsActivity"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+        </activity>
     </application>
 
 </manifest>

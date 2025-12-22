@@ -1084,4 +1084,53 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
 
         return result
     }
+
+    // ==================== GAME REWARDS ====================
+
+    /**
+     * Claim game reward for today.
+     * Called when user accepts the reward after meeting daily goal.
+     */
+    suspend fun claimGameReward(racesEarned: Int) {
+        val today = getTodayStats()
+        dao.upsertDailyStats(today.copy(
+            racesEarned = racesEarned,
+            gameRewardClaimed = true,
+            updatedAt = System.currentTimeMillis()
+        ))
+    }
+
+    /**
+     * Record that a game session was used (races played).
+     */
+    suspend fun recordGameSessionUsed(racesPlayed: Int) {
+        val today = getTodayStats()
+        dao.upsertDailyStats(today.copy(
+            racesUsed = today.racesUsed + racesPlayed,
+            lastGamePlayedAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        ))
+    }
+
+    /**
+     * Record a game session for history tracking.
+     */
+    suspend fun recordGameSession(
+        gameId: String,
+        racesPlayed: Int,
+        startedAt: Long,
+        endedAt: Long? = null,
+        raceResults: String? = null
+    ) {
+        dao.insertGameSession(
+            GameSessionRecord(
+                gameId = gameId,
+                date = todayString(),
+                racesPlayed = racesPlayed,
+                startedAt = startedAt,
+                endedAt = endedAt,
+                raceResults = raceResults
+            )
+        )
+    }
 }

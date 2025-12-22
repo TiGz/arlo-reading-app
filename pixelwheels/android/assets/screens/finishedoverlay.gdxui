@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<gdxui>
+    <Config>
+        <ConfigItem id="firstPointsIncreaseInterval">1</ConfigItem>
+        <ConfigItem id="pointsIncreaseInterval">0.2</ConfigItem>
+        <ConfigItem id="rankChangeAnimationSpeed">0.1</ConfigItem>
+
+        <!-- Space between the "best" indicator and its label -->
+        <ConfigItem id="bestIndicatorMargin">10</ConfigItem>
+
+        <ConfigItem id="columnSpacing">24</ConfigItem>
+        <ConfigItem id="bestIndicatorAnimation">
+            alpha 0.0
+            moveBy -5g 15g
+            rotateBy 360
+            delay 0.8
+            parallel
+                alpha 1 0.4
+                moveBy 0 -15g 1 bounceOut
+                moveBy 5g 0 1
+                rotateBy -360 1
+            end
+        </ConfigItem>
+    </Config>
+    <AnchorGroup id="root" gridSize="20">
+        <Label id="titleLabel" style="title" topCenter="root.topCenter 0 -1g" />
+
+        <Table id="scrollableTable"
+            topCenter="titleLabel.bottomCenter 0 -1g"
+            width="750px"
+            height="300px"/>
+
+        <Menu id="menu" width="14g" bottomCenter="root.bottomCenter 0 1g">
+            <Items>
+                <Ifdef var="quickRace">
+                    <ButtonMenuItem id="restartButton" text="RESTART"/>
+                    <ButtonMenuItem id="continueButton" text="BACK TO MENU"/>
+                </Ifdef>
+                <Else>
+                    <ButtonMenuItem id="continueButton" text="CONTINUE"/>
+                </Else>
+            </Items>
+        </Menu>
+
+        <Ifdef var="showCongratsCar">
+            <Image id="car" name="congrats-car" bottomLeft="root.bottomCenter 12g 0" visible="false">
+                <Action>
+                    delay 2.2
+                    // delay before moveBy so that moveBy happens after anchor layout
+                    moveBy 12g 0
+                    show
+                    moveBy -12g 0 0.5 pow4Out
+                </Action>
+            </Image>
+            <Label id="congratsCarLabel" bottomCenter="car.topCenter -3g 1g" style="speechBubble"
+                align="center" visible="false" width="12g" wrap="true">
+                <Action>
+                    delay 2.6
+                    alpha 0
+                    show
+                    alpha 1 0.2
+                </Action>
+            </Label>
+        </Ifdef>
+    </AnchorGroup>
+</gdxui>

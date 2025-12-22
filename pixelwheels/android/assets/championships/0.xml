@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<championship id="country" name="Country Life">
+    <track id="country" name="Welcome!">
+        <lapRecords>
+            <record value="8"/>
+            <record value="10"/>
+            <record value="12"/>
+        </lapRecords>
+        <totalRecords>
+            <record value="30"/>
+            <record value="33"/>
+            <record value="36"/>
+        </totalRecords>
+    </track>
+    <track id="river" name="River">
+        <lapRecords>
+            <record value="10"/>
+            <record value="12"/>
+            <record value="14"/>
+        </lapRecords>
+        <totalRecords>
+            <record value="36"/>
+            <record value="39"/>
+            <record value="42"/>
+        </totalRecords>
+    </track>
+    <track id="flood" name="Flood">
+        <lapRecords>
+            <record value="15"/>
+            <record value="17"/>
+            <record value="19"/>
+        </lapRecords>
+        <totalRecords>
+            <record value="54"/>
+            <record value="57"/>
+            <record value="60"/>
+        </totalRecords>
+    </track>
+</championship>

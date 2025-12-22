@@ -1,0 +1,171 @@
+apply plugin: "com.android.application"
+
+configurations { natives }
+
+dependencies {
+    implementation project(":core")
+    implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
+    implementation "com.badlogicgames.gdx:gdx-box2d:$gdxVersion"
+    natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi"
+    natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a"
+    natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-x86"
+    natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-arm64-v8a"
+    natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-x86_64"
+    implementation "com.badlogicgames.gdx:gdx-freetype:$gdxVersion"
+    natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-armeabi"
+    natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-armeabi-v7a"
+    natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86"
+    natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a"
+    natives "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86_64"
+    implementation "com.badlogicgames.gdx-controllers:gdx-controllers-core:$gdxControllersVersion"
+    implementation "com.badlogicgames.gdx-controllers:gdx-controllers-android:$gdxControllersVersion"
+    implementation "androidx.core:core:1.13.1"
+}
+
+android {
+    namespace "com.agateau.tinywheels.android"
+    Properties versionProps = new Properties()
+    versionProps.load(new FileInputStream(file('../version.properties')))
+
+    defaultConfig {
+        applicationId "com.agateau.tinywheels.android"
+        minSdk 19
+        targetSdk 35
+        // Must match ci/install-android-sdk
+        compileSdk 35
+        versionCode versionProps['VERSION_CODE'].toInteger()
+        versionName versionProps['VERSION']
+    }
+
+    flavorDimensions = ['store']
+    productFlavors {
+        itchio {
+            dimension 'store'
+        }
+        gplay {
+            dimension 'store'
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src/main']
+            aidl.srcDirs = ['src/main']
+            renderscript.srcDirs = ['src/main']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+            jniLibs.srcDirs = ['libs']
+        }
+        itchio {
+            java.srcDirs = ['src/itchio']
+        }
+        gplay {
+            java.srcDirs = ['src/gplay']
+        }
+    }
+    signingConfigs {
+        release {
+            if (project.file('signing.gradle').exists()) {
+                apply from: 'signing.gradle', to: release
+            } else if (System.getenv("KEYSTORE_BASE64") != null) {
+                storeFile decodeKeyStoreFileFromBase64Env('KEYSTORE_BASE64')
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEYSTORE_KEY_ALIAS')
+                keyPassword System.getenv('KEYSTORE_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    packagingOptions {
+        resources {
+            excludes += ['LICENSE.txt']
+        }
+    }
+    buildFeatures {
+        renderScript true
+        aidl true
+    }
+}
+
+// called every time gradle gets executed, takes the native dependencies of
+// the natives configuration, and extracts them to the proper libs/ folders
+// so they get packed with the APK.
+task copyAndroidNatives() {
+    file("libs/armeabi/").mkdirs()
+    file("libs/armeabi-v7a/").mkdirs()
+    file("libs/x86/").mkdirs()
+    file("libs/arm64-v8a/").mkdirs()
+    file("libs/x86_64/").mkdirs()
+
+    configurations.natives.files.each { jar ->
+        def outputDir = null
+        if (jar.name.endsWith("natives-armeabi-v7a.jar")) outputDir = file("libs/armeabi-v7a")
+        if (jar.name.endsWith("natives-armeabi.jar")) outputDir = file("libs/armeabi")
+        if (jar.name.endsWith("natives-x86.jar")) outputDir = file("libs/x86")
+        if (jar.name.endsWith("natives-arm64-v8a.jar")) outputDir = file("libs/arm64-v8a")
+        if (jar.name.endsWith("natives-x86_64.jar")) outputDir = file("libs/x86_64")
+        if (outputDir != null) {
+            copy {
+                from zipTree(jar)
+                into outputDir
+                include "*.so"
+            }
+        }
+    }
+}
+
+task run(type: Exec) {
+    def path
+    def localProperties = project.file("../local.properties")
+    if (localProperties.exists()) {
+        Properties properties = new Properties()
+        localProperties.withInputStream { instr ->
+            properties.load(instr)
+        }
+        def sdkDir = properties.getProperty('sdk.dir')
+        if (sdkDir) {
+            path = sdkDir
+        } else {
+            path = "$System.env.ANDROID_HOME"
+        }
+    } else {
+        path = "$System.env.ANDROID_HOME"
+    }
+
+    def adb = path + "/platform-tools/adb"
+    commandLine "$adb", 'shell', 'am', 'start', '-n', 'com.agateau.pixelwheels.android/AndroidLauncher'
+}
+
+// Thanks to https://gist.github.com/mariotaku/7a0c51955d14def2fa0e#file-signing-gradle-L82
+static def decodeKeyStoreFileFromBase64Env(String name) {
+    String keyStoreBase64 = System.getenv(name)
+    if (keyStoreBase64 == null) {
+        return null
+    }
+    File tempKeyStoreFile = File.createTempFile("tmp_ks_", ".jks", File.createTempDir())
+    FileOutputStream fos = null
+    try {
+        fos = new FileOutputStream(tempKeyStoreFile)
+        fos.write(keyStoreBase64.decodeBase64())
+        fos.flush()
+    } finally {
+        if (fos != null) {
+            fos.close()
+        }
+    }
+    return tempKeyStoreFile
+}

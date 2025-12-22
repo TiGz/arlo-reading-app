@@ -1,0 +1,8 @@
+<vehicle speed="1.15" name="Miramar" width="35" height="86">
+    <main image="miramar"/>
+    <shapes>
+        <octogon corner="3" width="35" height="86"/>
+    </shapes>
+    <axle y="69" width="27" steer="1"/>
+    <axle y="19" width="27"/>
+</vehicle>

@@ -92,6 +92,12 @@ data class DailyStats(
     val totalAppTimeMs: Long = 0,        // Total app open time
     val sessionCount: Int = 0,           // Number of reading sessions
 
+    // Game rewards tracking
+    val racesEarned: Int = 0,            // Races earned today (1-3 based on performance)
+    val racesUsed: Int = 0,              // Races consumed today
+    val gameRewardClaimed: Boolean = false,  // Has claimed today's reward
+    val lastGamePlayedAt: Long? = null,  // Timestamp of last game session
+
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     /** Total stars of all types */
@@ -354,6 +360,23 @@ data class DailyRecordDisplay(
     val totalStars: Int
         get() = goldStars + silverStars + bronzeStars
 }
+
+/**
+ * Records game sessions for history tracking.
+ */
+@Entity(
+    tableName = "game_sessions",
+    indices = [Index(value = ["date"])]
+)
+data class GameSessionRecord(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val gameId: String,                  // "pixelwheels"
+    val date: String,                    // ISO date
+    val racesPlayed: Int,
+    val startedAt: Long,
+    val endedAt: Long? = null,
+    val raceResults: String? = null      // JSON of race positions (optional)
+)
 
 /**
  * Weekly summary for dashboard display.

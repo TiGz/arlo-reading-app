@@ -22,7 +22,16 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb shell am force-stop com.example.arlo)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell monkey -p com.example.arlo -c android.intent.category.LAUNCHER 1)",
       "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 100)",
-      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 1000)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat -d -t 1000)",
+      "Bash(if [ -d \"pixelwheels\" ])",
+      "Bash(then echo \"PixelWheels already cloned\")",
+      "Bash(else git clone https://github.com/agateau/pixelwheels.git)",
+      "Bash(fi)",
+      "Bash(git remote add:*)",
+      "Bash(git subtree:*)",
+      "Bash(./gradlew:*)",
+      "Bash(xargs cat:*)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices)"
     ]
   }
 }

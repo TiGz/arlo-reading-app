@@ -387,6 +387,26 @@ interface ReadingStatsDao {
      */
     @Query("SELECT COUNT(*) FROM completed_sentences")
     fun observeTotalCompletedSentences(): Flow<Int>
+
+    // ==================== GAME SESSIONS ====================
+
+    /**
+     * Insert a game session record.
+     */
+    @Insert
+    suspend fun insertGameSession(session: GameSessionRecord)
+
+    /**
+     * Get game sessions for a date.
+     */
+    @Query("SELECT * FROM game_sessions WHERE date = :date ORDER BY startedAt DESC")
+    suspend fun getGameSessionsForDate(date: String): List<GameSessionRecord>
+
+    /**
+     * Get total races played today.
+     */
+    @Query("SELECT COALESCE(SUM(racesPlayed), 0) FROM game_sessions WHERE date = :date")
+    suspend fun getTotalRacesPlayedForDate(date: String): Int
 }
 
 /**

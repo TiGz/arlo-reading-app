@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<gdxui>
+    <Config>
+        <ConfigItem id="entrantTableSpacing">24</ConfigItem>
+    </Config>
+    <AnchorGroup id="root" gridSize="20px">
+        <Group topCenter="root.topCenter -10g -1g">
+            <Label id="mainLabel1" style="title" x="6g" y="-2.5g"/>
+            <Label id="mainLabel2" style="title" x="6g" y="-4.5g"/>
+            <Image id="championshipIcon" x="-2g" y="-6.5g"/>
+            <Action actor="mainLabel1">
+                moveBy 140g 0
+                moveBy -140g 0 1 pow2Out
+            </Action>
+            <Action actor="mainLabel2">
+                moveBy 120g 0
+                delay 0.1
+                moveBy -120g 0 1 pow2Out
+            </Action>
+            <Action actor="championshipIcon">
+                moveBy 0 7g
+                moveBy 0 -7g 0.6 bounceOut
+            </Action>
+        </Group>
+
+        <Table id="entrantTable" center="root.center 0 -1g"
+            width="30g"
+            height="16g">
+            <Action>
+                alpha 0
+                delay 1.5
+                alpha 1 0.5 pow2Out
+            </Action>
+        </Table>
+
+        <ImageButton id="nextButton"
+                    bottomRight="root.bottomRight -1g 1g"
+                    imageName="icon-next"/>
+    </AnchorGroup>
+</gdxui>

@@ -14,6 +14,9 @@ val localProperties = Properties().apply {
     }
 }
 
+// LibGDX version - must match PixelWheels (pinned for tablet stability)
+val gdxVersion = "1.9.14"
+
 android {
     namespace = "com.example.arlo"
     compileSdk = 35
@@ -38,6 +41,11 @@ android {
             ?: System.getenv("KOKORO_SERVER_URL")
             ?: ""
         buildConfigField("String", "KOKORO_SERVER_URL", "\"$kokoroUrl\"")
+
+        // Only include ARM architectures (Fire tablets) to reduce APK size
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -59,6 +67,13 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    // Include PixelWheels assets for the game
+    sourceSets {
+        named("main") {
+            assets.srcDirs("src/main/assets", "../pixelwheels/android/assets")
+        }
     }
 }
 
@@ -105,6 +120,26 @@ dependencies {
 
     // FlexboxLayout for animated word display
     implementation("com.google.android.flexbox:flexbox:3.0.0")
+
+    // PixelWheels game integration (GPL-3.0+)
+    implementation(project(":pixelwheels:core"))
+
+    // LibGDX Android backend (matching PixelWheels 1.9.14)
+    implementation("com.badlogicgames.gdx:gdx-backend-android:$gdxVersion")
+    implementation("com.badlogicgames.gdx:gdx-box2d:$gdxVersion")
+    implementation("com.badlogicgames.gdx:gdx-freetype:$gdxVersion")
+
+    // LibGDX native libraries - ARM only for Fire tablets
+    implementation("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a")
+    implementation("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a")
+    implementation("com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-arm64-v8a")
+    implementation("com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a")
+    implementation("com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a")
+    implementation("com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-armeabi-v7a")
+
+    // LibGDX controllers (used by PixelWheels)
+    implementation("com.badlogicgames.gdx-controllers:gdx-controllers-core:2.2.2")
+    implementation("com.badlogicgames.gdx-controllers:gdx-controllers-android:2.2.2")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

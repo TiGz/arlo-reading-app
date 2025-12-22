@@ -22,9 +22,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         StreakState::class,
         ParentSettings::class,
         ReadingSession::class,
-        CompletedSentence::class
+        CompletedSentence::class,
+        GameSessionRecord::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(SentenceListConverter::class)
@@ -309,6 +310,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add game reward fields to daily_stats
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesEarned INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN racesUsed INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN gameRewardClaimed INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE daily_stats ADD COLUMN lastGamePlayedAt INTEGER")
+
+                // Create game_sessions table for history tracking
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS game_sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        gameId TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        racesPlayed INTEGER NOT NULL,
+                        startedAt INTEGER NOT NULL,
+                        endedAt INTEGER,
+                        raceResults TEXT
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_game_sessions_date ON game_sessions(date)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -319,7 +344,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                    MIGRATION_9_10, MIGRATION_10_11
+                    MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12
                 )
                 .fallbackToDestructiveMigration()
                 .build()
