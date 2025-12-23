@@ -110,7 +110,14 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb exec-out run-as com.example.arlo cat databases/arlo_database-shm)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell \"run-as com.example.arlo sqlite3 databases/arlo_database ''SELECT COUNT\\(*\\) as count, bookId FROM pages GROUP BY bookId''\")",
       "Skill(compound-engineering:workflows:work)",
-      "Skill(compound-engineering:workflows:work:*)"
+      "Skill(compound-engineering:workflows:work:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init -p)",
+      "Bash(./node_modules/.bin/tailwindcss:*)",
+      "Bash(npm run build:*)",
+      "Bash(gh run list:*)"
     ]
   }
 }
