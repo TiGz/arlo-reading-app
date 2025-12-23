@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_bottom_sheet"
+    android:orientation="vertical"
+    android:paddingBottom="24dp">
+
+    <!-- Header with drag handle -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_drag_handle" />
+
+    <!-- Title row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="12dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="Navigate"
+            android:src="@drawable/ic_book"
+            app:tint="@color/accent_purple" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:fontFamily="serif"
+            android:text="Jump To..."
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            android:padding="8dp"
+            android:src="@drawable/ic_close"
+            app:tint="@color/text_secondary" />
+
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="20dp"
+        android:background="@color/divider" />
+
+    <!-- Chapter Navigation Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardChapter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="@color/surface"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="2dp"
+        app:strokeColor="@color/accent_purple"
+        app:strokeWidth="1dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Header with arrows -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnPrevChapter"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_nav_button_purple"
+                    android:contentDescription="Previous chapter"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_chevron_left"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:letterSpacing="0.1"
+                    android:text="CHAPTER"
+                    android:textAllCaps="true"
+                    android:textColor="@color/accent_purple"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/btnNextChapter"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_nav_button_purple"
+                    android:contentDescription="Next chapter"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/white" />
+
+            </LinearLayout>
+
+            <!-- Chapter title -->
+            <TextView
+                android:id="@+id/tvChapterTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                tools:text="Chapter 3: The Eyrie" />
+
+            <!-- Page range -->
+            <TextView
+                android:id="@+id/tvChapterPages"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="sans-serif"
+                android:gravity="center"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                tools:text="pages 15 - 22" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Page Navigation Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardPage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        app:cardBackgroundColor="@color/surface"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="2dp"
+        app:strokeColor="@color/primary"
+        app:strokeWidth="1dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <ImageButton
+                android:id="@+id/btnPrevPage"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_nav_button_teal"
+                android:contentDescription="Previous page"
+                android:padding="10dp"
+                android:src="@drawable/ic_chevron_left"
+                app:tint="@color/white" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.1"
+                    android:text="PAGE"
+                    android:textAllCaps="true"
+                    android:textColor="@color/primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvPageNumber"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    tools:text="17 of 45" />
+
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnNextPage"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_nav_button_teal"
+                android:contentDescription="Next page"
+                android:padding="10dp"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/white" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Next Unread Card (Reading page only) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardNextUnread"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        app:cardBackgroundColor="@color/surface"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="2dp"
+        app:strokeColor="@color/star_gold"
+        app:strokeWidth="1dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <!-- Star icon -->
+            <ImageView
+                android:id="@+id/ivUnreadStar"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_nav_button_gold"
+                android:contentDescription="Jump to unread"
+                android:padding="8dp"
+                android:src="@drawable/ic_star_outline"
+                app:tint="@color/white" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.1"
+                    android:text="NEXT UNREAD"
+                    android:textAllCaps="true"
+                    android:textColor="@color/star_gold_dark"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvNextUnreadLocation"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fontFamily="sans-serif"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp"
+                    tools:text="Page 19, Sentence 3" />
+
+            </LinearLayout>
+
+            <!-- Go arrow -->
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="Go"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/star_gold" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- All caught up state (replaces Next Unread when complete) -->
+    <LinearLayout
+        android:id="@+id/allCaughtUpState"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_caught_up_card"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="Complete"
+            android:src="@drawable/ic_check_circle"
+            app:tint="@color/success" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="All caught up!"
+            android:textColor="@color/success"
+            android:textSize="16sp" />
+
+    </LinearLayout>
+
+</LinearLayout>

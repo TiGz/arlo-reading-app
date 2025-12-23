@@ -9,6 +9,7 @@ import type {
 } from '../types';
 
 const SUPABASE_URL = 'https://qqhkximogdndkfiunewm.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxaGt4aW1vZ2RuZGtmaXVuZXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0OTE3MTEsImV4cCI6MjA4MjA2NzcxMX0.UmxARCF72W6zmsgi1zzayZxS1-0P6-luq8XQZHyolBc';
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/query-stats`;
 
 export type QueryType =
@@ -38,7 +39,12 @@ export async function queryStats<T>(
     params.set('days', String(options.days));
   }
 
-  const response = await fetch(`${FUNCTION_URL}?${params}`);
+  const response = await fetch(`${FUNCTION_URL}?${params}`, {
+    headers: {
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+  });
 
   if (!response.ok) {
     const error = await response.json();
