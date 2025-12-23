@@ -951,6 +951,13 @@ class ReadingStatsRepository(private val dao: ReadingStatsDao) {
         return dao.getRecentDailyStats(days)
     }
 
+    /**
+     * Get reading sessions for a date range (for cloud sync).
+     */
+    suspend fun getSessionsForRange(startDate: String, endDate: String): List<ReadingSession> {
+        return dao.getSessionsForRange(startDate, endDate)
+    }
+
     // ==================== PERIOD-BASED STATS FOR DASHBOARD ====================
 
     /**

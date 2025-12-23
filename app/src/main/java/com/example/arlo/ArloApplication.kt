@@ -20,6 +20,11 @@ import com.example.arlo.speech.SpeechSetupManager
 import com.example.arlo.tts.TTSCacheManager
 import com.example.arlo.tts.TTSPreferences
 import com.example.arlo.tts.TTSService
+import com.example.arlo.sync.AppLifecycleObserver
+import com.example.arlo.sync.CloudSyncManager
+import com.example.arlo.sync.ErrorLogger
+import com.example.arlo.sync.SupabaseConfig
+import com.example.arlo.sync.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +40,15 @@ class ArloApplication : Application() {
     val raceCreditsManager by lazy { RaceCreditsManager.getInstance(this) }
     val milestoneRewardsService by lazy { MilestoneRewardsService(statsRepository, raceCreditsManager) }
     val gameRewardsManager by lazy { GameRewardsManager(statsRepository) }
+
+    // Cloud sync manager
+    val cloudSyncManager by lazy {
+        CloudSyncManager(
+            context = this,
+            statsRepository = statsRepository,
+            bookRepository = repository
+        )
+    }
 
     // TTS is initialized eagerly so it's ready when needed
     lateinit var ttsService: TTSService
@@ -96,6 +110,21 @@ class ArloApplication : Application() {
 
         // Pre-cache voice preview audio for settings
         preCacheVoicePreviews()
+
+        // Initialize cloud sync
+        if (SupabaseConfig.isConfigured()) {
+            Log.d("ArloApplication", "Supabase configured, initializing cloud sync")
+            ErrorLogger.init(cloudSyncManager)
+            SyncWorker.schedulePeriodicSync(this)
+            AppLifecycleObserver.register(cloudSyncManager, applicationScope)
+
+            // Sync immediately on app start
+            applicationScope.launch {
+                cloudSyncManager.syncAll()
+            }
+        } else {
+            Log.d("ArloApplication", "Supabase not configured, cloud sync disabled")
+        }
     }
 
     /**

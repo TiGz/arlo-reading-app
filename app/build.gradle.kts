@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
     id("kotlin-kapt") // For Room
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22" // For Supabase SDK
 }
 
 // Load local.properties
@@ -44,6 +45,17 @@ android {
             ?: System.getenv("KOKORO_SERVER_URL")
             ?: ""
         buildConfigField("String", "KOKORO_SERVER_URL", "\"$kokoroUrl\"")
+
+        // Supabase Cloud Sync
+        val supabaseUrl = localProperties.getProperty("SUPABASE_URL")
+            ?: System.getenv("SUPABASE_URL")
+            ?: ""
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+
+        val supabaseAnonKey = localProperties.getProperty("SUPABASE_ANON_KEY")
+            ?: System.getenv("SUPABASE_ANON_KEY")
+            ?: ""
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
 
         // Only include ARM architectures (Fire tablets) to reduce APK size
         ndk {
@@ -124,6 +136,20 @@ dependencies {
 
     // FlexboxLayout for animated word display
     implementation("com.google.android.flexbox:flexbox:3.0.0")
+
+    // Supabase Cloud Sync (2.x for Kotlin 1.9 compatibility)
+    implementation(platform("io.github.jan-tennert.supabase:bom:2.6.1"))
+    implementation("io.github.jan-tennert.supabase:functions-kt")
+    implementation("io.ktor:ktor-client-android:2.3.7")
+
+    // WorkManager for background sync
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Kotlinx Serialization (required by Supabase SDK - 1.6.x for Kotlin 1.9)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // Lifecycle Process (for app lifecycle observer)
+    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
 
     // PixelWheels game integration (GPL-3.0+)
     implementation(project(":pixelwheels:core"))

@@ -85,6 +85,10 @@ class BookRepository(private val bookDao: BookDao) {
         return bookDao.getBook(bookId)
     }
 
+    suspend fun getAllBooksSync(): List<Book> {
+        return bookDao.getAllBooksSync()
+    }
+
     suspend fun getPage(pageId: Long): Page? {
         return bookDao.getPage(pageId)
     }
