@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Arlo's Reading Dashboard</title>
+    <script>
+      // Single-page app redirect
+      // Redirect 404s back to index.html for client-side routing
+      const path = window.location.pathname;
+      const repo = '/arlo-reading-app';
+      if (path.startsWith(repo)) {
+        const route = path.slice(repo.length) || '/';
+        sessionStorage.setItem('redirect', route);
+        window.location.replace(repo + '/');
+      }
+    </script>
+  </head>
+  <body>
+    Redirecting...
+  </body>
+</html>
