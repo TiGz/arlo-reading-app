@@ -51,3 +51,9 @@ google-services.json
 # Secrets
 secrets.properties
 *.secret
+
+# Playwright MCP
+.playwright-mcp/
+
+# Design mockups (local only)
+design-mockups/
