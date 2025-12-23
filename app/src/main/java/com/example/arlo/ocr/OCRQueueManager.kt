@@ -210,8 +210,10 @@ class OCRQueueManager(
             }
 
             // Calculate next expected page number (only works for numeric labels)
-            val lastDetectedPage = result.pages.lastOrNull()?.pageLabel?.toIntOrNull()
+            val rawPageLabel = result.pages.lastOrNull()?.pageLabel
+            val lastDetectedPage = rawPageLabel?.toIntOrNull()
             val nextExpected = lastDetectedPage?.plus(1)
+            Log.d(TAG, "Page label calculation: rawPageLabel='$rawPageLabel', lastDetectedPage=$lastDetectedPage, nextExpected=$nextExpected")
 
             // Emit pages processed feedback
             _queueState.value = QueueState.PagesProcessed(

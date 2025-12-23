@@ -18,6 +18,7 @@ import com.example.arlo.data.EarnedMilestone
 import com.example.arlo.data.Page
 import com.example.arlo.data.ReadingStatsRepository
 import com.example.arlo.data.SentenceData
+import com.example.arlo.data.TextStyle
 import com.example.arlo.data.SessionStats
 import com.example.arlo.data.StarType
 import com.example.arlo.games.MilestoneRewardsService
@@ -188,6 +189,16 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 "${sentence.text}..."
             }
         }
+
+        /**
+         * True when we're on the last sentence of the last page.
+         * Used to show visual indication that user should capture more pages.
+         */
+        val isAtEndOfBook: Boolean get() =
+            pages.isNotEmpty() &&
+            sentences.isNotEmpty() &&
+            currentPageIndex == pages.lastIndex &&
+            currentSentenceIndex == sentences.lastIndex
     }
 
     private val _state = MutableStateFlow(ReaderState())
@@ -426,7 +437,15 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     fun nextSentence() {
         val current = _state.value
-        if (current.sentences.isEmpty()) return
+
+        // Handle empty pages (title-only pages like "Prologue")
+        if (current.sentences.isEmpty()) {
+            val nextPageIndex = current.currentPageIndex + 1
+            if (nextPageIndex < current.pages.size) {
+                moveToPage(nextPageIndex, preservePlayingState = true)
+            }
+            return
+        }
 
         // Calculate how many sentences to skip (1 normally, 2 if we merged with the next sentence)
         val skipCount = if (skipNextSentenceForMerge) {
@@ -515,7 +534,30 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
     fun previousSentence() {
         val current = _state.value
-        if (current.sentences.isEmpty()) return
+
+        // Handle empty pages (title-only pages like "Prologue")
+        if (current.sentences.isEmpty()) {
+            val prevPageIndex = current.currentPageIndex - 1
+            if (prevPageIndex >= 0) {
+                val prevPage = current.pages.getOrNull(prevPageIndex)
+                val prevSentences = parseSentencesForPage(prevPage)
+                val lastSentenceIndex = (prevSentences.size - 1).coerceAtLeast(0)
+                _state.value = current.copy(
+                    currentPageIndex = prevPageIndex,
+                    currentSentenceIndex = lastSentenceIndex,
+                    sentences = prevSentences,
+                    needsMorePages = false,
+                    highlightRange = null,
+                    targetWord = null,
+                    ttsHasPronouncedTargetWord = false,
+                    attemptCount = 0,
+                    lastAttemptSuccess = null,
+                    collaborativeState = CollaborativeState.IDLE
+                )
+                saveReadingPosition()
+            }
+            return
+        }
 
         val prevIndex = current.currentSentenceIndex - 1
 
@@ -1281,6 +1323,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         data class QuotedSpeech(val targetWords: String) : CollaborativeSkipReason("Quoted speech in target words")
         data class ExceedsSyllableLimit(val targetWords: String, val maxSyllables: Int) : CollaborativeSkipReason("Target word exceeds max syllables ($maxSyllables)")
         data class ContainsAcronym(val targetWords: String) : CollaborativeSkipReason("Target contains acronym (all caps)")
+        data class StyledText(val style: TextStyle) : CollaborativeSkipReason("Styled text (${style.name})")
     }
 
     /**
@@ -1288,6 +1331,11 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
      * Returns a skip reason if collaboration should be skipped, null otherwise.
      */
     private fun shouldSkipCollaboration(sentence: SentenceData, targetWords: String): CollaborativeSkipReason? {
+        // Rule 0: Skip styled text (scene-setting, headings) - not suitable for collaborative reading
+        if (sentence.style != TextStyle.NORMAL) {
+            return CollaborativeSkipReason.StyledText(sentence.style)
+        }
+
         // Rule 1: Skip incomplete sentences at the end of page
         if (!sentence.isComplete && _state.value.currentSentenceIndex == _state.value.sentences.lastIndex) {
             return CollaborativeSkipReason.IncompleteSentence(sentence.text)

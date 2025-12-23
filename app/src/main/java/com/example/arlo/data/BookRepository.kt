@@ -1,6 +1,7 @@
 package com.example.arlo.data
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 
@@ -94,6 +95,14 @@ class BookRepository(private val bookDao: BookDao) {
 
     suspend fun getPageCount(bookId: Long): Int {
         return bookDao.getPageCount(bookId)
+    }
+
+    suspend fun getPendingPageCountSync(bookId: Long): Int {
+        return bookDao.getPendingPageCountSync(bookId)
+    }
+
+    suspend fun getLastCompletedPageLabel(bookId: Long): String? {
+        return bookDao.getLastCompletedPageLabel(bookId)
     }
 
     suspend fun updateBookCover(bookId: Long, coverPath: String) {
@@ -222,8 +231,20 @@ class BookRepository(private val bookDao: BookDao) {
     fun parseSentences(json: String?): List<SentenceData> {
         if (json.isNullOrBlank()) return emptyList()
         return try {
-            val type = object : TypeToken<List<SentenceData>>() {}.type
-            gson.fromJson(json, type)
+            // Manual parsing to handle missing 'style' field in legacy data
+            val jsonArray = JsonParser.parseString(json).asJsonArray
+            jsonArray.map { element ->
+                val obj = element.asJsonObject
+                val text = obj.get("text")?.asString ?: ""
+                val isComplete = obj.get("isComplete")?.asBoolean ?: true
+                val styleStr = obj.get("style")?.asString?.uppercase() ?: "NORMAL"
+                val style = try {
+                    TextStyle.valueOf(styleStr)
+                } catch (e: IllegalArgumentException) {
+                    TextStyle.NORMAL
+                }
+                SentenceData(text = text, isComplete = isComplete, style = style)
+            }
         } catch (e: Exception) {
             emptyList()
         }

@@ -92,6 +92,7 @@
     <color name="reader_text_primary">#1A1A2E</color>
     <color name="reader_text_secondary">#6B7280</color>
     <color name="reader_play_button">#FF6B6B</color>
+    <color name="scene_text">#5D4E6D</color>  <!-- Muted purple for scene-setting text -->
 
     <!-- Setup Screen -->
     <color name="background_cream">#FAFBFC</color>

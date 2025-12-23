@@ -30,6 +30,7 @@ class LibraryFragment : Fragment() {
         val adapter = BookAdapter(
             onBookClick = { book ->
                 // Navigate to Reader
+                (activity as? MainActivity)?.clearNavSelection()
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.container, UnifiedReaderFragment.newInstance(book.id))
                     .addToBackStack(null)
@@ -60,6 +61,7 @@ class LibraryFragment : Fragment() {
 
         binding.fabAddBook.setOnClickListener {
             // Navigate to Camera for new book (cover capture flow)
+            (activity as? MainActivity)?.clearNavSelection()
             parentFragmentManager.beginTransaction()
                 .replace(R.id.container, CameraFragment.newInstance(CameraFragment.MODE_NEW_BOOK))
                 .addToBackStack(null)

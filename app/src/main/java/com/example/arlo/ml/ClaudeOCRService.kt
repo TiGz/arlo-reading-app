@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Base64
 import android.util.Log
 import com.example.arlo.data.SentenceData
+import com.example.arlo.data.TextStyle
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -213,7 +214,7 @@ class ClaudeOCRService(private val context: Context) {
 
         val requestMap = mapOf(
             "model" to "claude-3-5-haiku-20241022",
-            "max_tokens" to 4096,
+            "max_tokens" to 8192,
             "messages" to listOf(
                 mapOf(
                     "role" to "user",
@@ -282,9 +283,16 @@ class ClaudeOCRService(private val context: Context) {
 
             val sentences = sentencesArray.map { element ->
                 val obj = element.asJsonObject
+                val styleStr = obj.get("style")?.asString?.uppercase() ?: "NORMAL"
+                val style = try {
+                    TextStyle.valueOf(styleStr)
+                } catch (e: IllegalArgumentException) {
+                    TextStyle.NORMAL
+                }
                 SentenceData(
                     text = postProcessSentence(obj.get("text").asString),
-                    isComplete = obj.get("isComplete")?.asBoolean ?: true
+                    isComplete = obj.get("isComplete")?.asBoolean ?: true,
+                    style = style
                 )
             }
 
@@ -314,9 +322,16 @@ class ClaudeOCRService(private val context: Context) {
         val sentencesArray = json.getAsJsonArray("sentences")
         val sentences = sentencesArray.map { element ->
             val obj = element.asJsonObject
+            val styleStr = obj.get("style")?.asString?.uppercase() ?: "NORMAL"
+            val style = try {
+                TextStyle.valueOf(styleStr)
+            } catch (e: IllegalArgumentException) {
+                TextStyle.NORMAL
+            }
             SentenceData(
                 text = postProcessSentence(obj.get("text").asString),
-                isComplete = obj.get("isComplete")?.asBoolean ?: true
+                isComplete = obj.get("isComplete")?.asBoolean ?: true,
+                style = style
             )
         }
 
@@ -350,13 +365,16 @@ class ClaudeOCRService(private val context: Context) {
             }
         }
 
+        // Build fullText from parsed sentences, NOT the raw input (which may contain JSON artifacts)
+        val fullText = sentences.joinToString(" ") { it.text }
+
         // Wrap in new format for consistency
         val page = PageOCRResult(
             pageLabel = null,
             chapterTitle = null,
             confidence = 0.5f, // Fallback parsing = lower confidence
             sentences = sentences,
-            fullText = text
+            fullText = fullText
         )
         return OCRResult(listOf(page))
     }
@@ -405,8 +423,9 @@ Return a JSON object with this exact format:
       "chapterTitle": "Prologue",
       "confidence": 0.92,
       "sentences": [
-        {"text": "First sentence.", "isComplete": true},
-        {"text": "Last sentence that continues", "isComplete": false}
+        {"text": "REGIONAL GALACTIC OFFICE", "isComplete": true, "style": "SCENE"},
+        {"text": "First sentence.", "isComplete": true, "style": "NORMAL"},
+        {"text": "Last sentence that continues", "isComplete": false, "style": "NORMAL"}
       ]
     }
   ]
@@ -432,6 +451,25 @@ CHAPTER TITLE (chapterTitle):
 - Do NOT include book title or author name as chapter title
 - EXCLUDE from sentences but CAPTURE in this field
 
+TITLE-ONLY PAGES:
+- Some pages contain ONLY a chapter title or section heading with no body text
+- For these pages: set chapterTitle to the title text, and sentences to EMPTY array []
+- Examples: "Prologue", "Part One", "Chapter 1: The Journey Begins", "Interlude"
+- This allows navigation to flow naturally while preserving chapter metadata
+
+TEXT STYLE DETECTION (style field):
+- SCENE: Scene-setting text that establishes location, time, or context
+  * Usually appears at the START of a chapter/section
+  * Often in ALL CAPS, bold, or distinctive formatting
+  * Examples: "REGIONAL GALACTIC MANAGER'S OFFICE", "THE WHITE HOUSE - WASHINGTON D.C.", "THREE YEARS LATER"
+  * Location headers, timestamps, setting descriptions
+  * Capture each line as a separate sentence with style: "SCENE"
+- HEADING: Section headings within the page (not chapter titles which go in chapterTitle)
+  * Examples: "Part I", "The Letter", "Epilogue" when appearing mid-page
+- NORMAL: Regular body/narrative text (this is the default)
+  * All standard story prose, dialogue, descriptions
+- When in doubt, use "NORMAL"
+
 CHILDREN'S BOOK TEXT:
 - Capture ALL text including large display text, speech bubbles, captions
 - Text may be in various sizes, fonts, colors, and orientations
@@ -453,6 +491,7 @@ SENTENCE EXTRACTION:
 - IGNORE periods in numbers (${'$'}4.99, 3.14)
 - Keep dialogue punctuation with the sentence
 - Mark isComplete: false ONLY for the last sentence if it ends mid-thought
+- SCENE text: Each line should be a separate sentence (don't merge multiple location lines)
 
 TEXT VALIDATION - IMPORTANT:
 - After extracting text, CHECK that words make sense in context

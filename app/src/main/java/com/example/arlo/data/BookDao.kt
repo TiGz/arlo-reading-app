@@ -92,6 +92,14 @@ interface BookDao {
     @Query("SELECT COUNT(*) FROM pages WHERE bookId = :bookId AND processingStatus IN ('PENDING', 'PROCESSING')")
     fun getPendingPageCount(bookId: Long): Flow<Int>
 
+    // Get pending count synchronously
+    @Query("SELECT COUNT(*) FROM pages WHERE bookId = :bookId AND processingStatus IN ('PENDING', 'PROCESSING')")
+    suspend fun getPendingPageCountSync(bookId: Long): Int
+
+    // Get last completed page's detected page label
+    @Query("SELECT detectedPageLabel FROM pages WHERE bookId = :bookId AND processingStatus = 'COMPLETED' ORDER BY pageNumber DESC LIMIT 1")
+    suspend fun getLastCompletedPageLabel(bookId: Long): String?
+
     // Page recapture support
     @Query("SELECT * FROM pages WHERE id = :pageId")
     suspend fun getPageById(pageId: Long): Page?

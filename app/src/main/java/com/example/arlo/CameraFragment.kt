@@ -58,6 +58,10 @@ class CameraFragment : Fragment() {
     // Expected next page number (from OCR detection)
     private var expectedNextPage: Int? = null
 
+    // Current captured page count (for position indicator)
+    private var currentCapturedCount: Int = 0
+    private var currentPendingCount: Int = 0
+
     // Guidance state for kid-friendly page capture hints
     private var guidanceState: CaptureGuidanceState = CaptureGuidanceState.FirstPage
     private var lastSpokenInstruction: String? = null
@@ -256,10 +260,10 @@ class CameraFragment : Fragment() {
                         binding.chipQueueStatus.visibility = View.GONE
                     }
 
-                    // Update guidance when queue empties (may reveal page numbers)
-                    if (captureStep == CaptureStep.PAGE) {
-                        computeGuidanceState()
-                    }
+                    // DON'T call computeGuidanceState() here!
+                    // The queueState observer handles PagesProcessed which has the
+                    // correct nextExpectedPage. Calling here causes a race condition
+                    // where we update UI before expectedNextPage is set.
                 }
             }
         }
@@ -305,6 +309,7 @@ class CameraFragment : Fragment() {
     private fun handlePagesProcessed(state: OCRQueueManager.QueueState.PagesProcessed) {
         // Update expected next page for UI
         expectedNextPage = state.nextExpectedPage
+        Log.d("CameraFragment", "handlePagesProcessed: nextExpectedPage=${state.nextExpectedPage}, pageNumbers=${state.pageNumbers}")
 
         // Show feedback toast
         val pageList = state.pageNumbers.mapNotNull { it }.joinToString(", ")
@@ -454,14 +459,21 @@ class CameraFragment : Fragment() {
             // Recapture mode takes priority
             if (mode == MODE_RECAPTURE && recaptureExpectedPageNumber > 0) {
                 guidanceState = CaptureGuidanceState.RecapturePage(recaptureExpectedPageNumber)
+                updateCapturedCountChip(0, 0)  // Hide in recapture mode
                 updateGuidanceUI()
                 return@launch
             }
 
-            // Get page count for current book
-            val pageCount = if (currentBookId != -1L) {
-                app.repository.getPageCount(currentBookId)
-            } else 0
+            // Get page count and pending count for current book
+            val pageCount = if (currentBookId != -1L) app.repository.getPageCount(currentBookId) else 0
+            val pendingCount = if (currentBookId != -1L) app.repository.getPendingPageCountSync(currentBookId) else 0
+
+            // Track for position indicator
+            currentCapturedCount = pageCount
+            currentPendingCount = pendingCount
+
+            // Update captured count chip
+            updateCapturedCountChip(pageCount, pendingCount)
 
             // No pages yet
             if (pageCount == 0) {
@@ -474,15 +486,22 @@ class CameraFragment : Fragment() {
             val lastSentence = app.repository.getLastCompletedPageLastSentence(currentBookId)
             val contextSnippet = extractContextSnippet(lastSentence)
 
-            // Check queue status - don't show page number if queue has pending items
-            val pendingCount = ocrQueueManager.pendingPages.first().size
+            // Determine next page number:
+            // Simply get the last completed page's OCR-detected label + 1
+            // If no label detected, fall back to page count + 1
+            val nextPageNumber: Int? = if (pendingCount == 0) {
+                val lastPageLabel = app.repository.getLastCompletedPageLabel(currentBookId)
+                val lastPageNum = lastPageLabel?.toIntOrNull()
+                Log.d("CameraFragment", "computeGuidanceState: lastPageLabel='$lastPageLabel', parsed=$lastPageNum")
+                lastPageNum?.plus(1) ?: (pageCount + 1)
+            } else {
+                null  // Queue busy, don't show page number yet
+            }
+            Log.d("CameraFragment", "computeGuidanceState: nextPageNumber=$nextPageNumber, pendingCount=$pendingCount")
 
-            // Determine if we have confident page number prediction
-            val hasConfidentPageNumber = expectedNextPage != null && pendingCount == 0
-
-            guidanceState = if (hasConfidentPageNumber) {
+            guidanceState = if (nextPageNumber != null) {
                 CaptureGuidanceState.KnownNextPage(
-                    pageNumber = expectedNextPage!!,
+                    pageNumber = nextPageNumber,
                     contextSnippet = contextSnippet
                 )
             } else {
@@ -496,9 +515,37 @@ class CameraFragment : Fragment() {
     }
 
     /**
+     * Update the captured page count chip display.
+     */
+    private fun updateCapturedCountChip(pageCount: Int, pendingCount: Int) {
+        if (pageCount == 0) {
+            binding.chipCapturedCount.visibility = View.GONE
+            return
+        }
+
+        binding.chipCapturedCount.visibility = View.VISIBLE
+        val completedCount = pageCount - pendingCount
+        binding.chipCapturedCount.text = if (completedCount == 1) {
+            "1 page captured"
+        } else {
+            "$completedCount pages captured"
+        }
+    }
+
+    /**
      * Update the UI based on current guidance state.
      */
     private fun updateGuidanceUI() {
+        // Update position indicator (shows next position / total after capture)
+        // Only show when queue is empty so numbers are accurate
+        val nextPosition = currentCapturedCount + 1
+        if (currentPendingCount == 0 && (currentCapturedCount > 0 || captureStep == CaptureStep.PAGE)) {
+            binding.tvCapturePosition.visibility = View.VISIBLE
+            binding.tvCapturePosition.text = "$nextPosition/${nextPosition}"
+        } else {
+            binding.tvCapturePosition.visibility = View.GONE
+        }
+
         when (val state = guidanceState) {
             is CaptureGuidanceState.FirstPage -> {
                 binding.tvInstructionTitle.text = "Step 2"

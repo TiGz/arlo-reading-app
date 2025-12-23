@@ -99,6 +99,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Reset navigation state when navigating to non-tab fragments (reader, camera, etc.)
+     * This ensures the bottom nav will work correctly when returning to Library/Stats.
+     */
+    fun clearNavSelection() {
+        currentNavItemId = -1
+    }
+
+    /**
      * Navigate to stats dashboard tab programmatically.
      */
     fun navigateToStats() {

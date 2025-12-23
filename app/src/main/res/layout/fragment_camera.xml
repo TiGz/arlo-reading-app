@@ -63,24 +63,30 @@
         app:tint="@color/white"
         tools:visibility="visible" />
 
-    <!-- Instruction Card - Vibrant teal border -->
-    <LinearLayout
-        android:id="@+id/instructionCard"
+    <!-- Instruction Card Container -->
+    <FrameLayout
+        android:id="@+id/instructionCardContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="20dp"
         android:layout_marginTop="12dp"
-        android:background="@drawable/bg_instruction_card"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingHorizontal="28dp"
-        android:paddingVertical="24dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnBack">
 
-        <TextView
-            android:id="@+id/tvInstructionTitle"
+        <!-- Instruction Card - Vibrant teal border -->
+        <LinearLayout
+            android:id="@+id/instructionCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_instruction_card"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingHorizontal="28dp"
+            android:paddingVertical="24dp">
+
+            <TextView
+                android:id="@+id/tvInstructionTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="sans-serif-medium"
@@ -149,7 +155,24 @@
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
-    </LinearLayout>
+        </LinearLayout>
+
+        <!-- Position indicator in top-right corner of card -->
+        <TextView
+            android:id="@+id/tvCapturePosition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="12dp"
+            android:fontFamily="sans-serif"
+            android:textColor="@color/text_hint"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="4/4"
+            tools:visibility="visible" />
+
+    </FrameLayout>
 
     <!-- Speaker indicator -->
     <ImageView
@@ -161,9 +184,9 @@
         android:contentDescription="Audio playing"
         android:src="@drawable/ic_play"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/instructionCard"
-        app:layout_constraintEnd_toEndOf="@id/instructionCard"
-        app:layout_constraintTop_toTopOf="@id/instructionCard"
+        app:layout_constraintBottom_toBottomOf="@id/instructionCardContainer"
+        app:layout_constraintEnd_toEndOf="@id/instructionCardContainer"
+        app:layout_constraintTop_toTopOf="@id/instructionCardContainer"
         app:tint="@color/primary"
         tools:visibility="visible" />
 
@@ -174,22 +197,25 @@
         android:background="@drawable/bg_camera_overlay"
         app:layout_constraintBottom_toBottomOf="parent" />
 
-    <!-- Capture button - Extra large coral button -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
+    <!-- Capture button - Wide thumb-friendly button -->
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/imageCaptureButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="56dp"
+        android:layout_width="0dp"
+        android:layout_height="72dp"
+        android:layout_marginHorizontal="48dp"
+        android:layout_marginBottom="48dp"
         android:contentDescription="Capture photo"
-        android:src="@drawable/ic_camera"
         android:tooltipText="Capture photo"
         app:backgroundTint="@color/secondary"
-        app:fabCustomSize="80dp"
+        app:cornerRadius="36dp"
+        app:icon="@drawable/ic_camera"
+        app:iconGravity="textStart"
+        app:iconSize="32dp"
+        app:iconTint="@color/white"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:maxImageSize="36dp"
-        app:tint="@color/white" />
+        app:layout_constraintWidth_percent="0.5" />
 
     <!-- Skip/Done button -->
     <com.google.android.material.button.MaterialButton
@@ -298,7 +324,7 @@
 
     </FrameLayout>
 
-    <!-- Queue status chip - Teal colored -->
+    <!-- Queue status chip - Teal colored (left side) -->
     <com.google.android.material.chip.Chip
         android:id="@+id/chipQueueStatus"
         style="@style/ArloChip"
@@ -310,6 +336,24 @@
         app:layout_constraintBottom_toTopOf="@id/imageCaptureButton"
         app:layout_constraintStart_toStartOf="parent"
         tools:text="2 pages processing..."
+        tools:visibility="visible" />
+
+    <!-- Captured pages count chip (right side) -->
+    <com.google.android.material.chip.Chip
+        android:id="@+id/chipCapturedCount"
+        style="@style/ArloChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="16dp"
+        android:textColor="@color/primary"
+        android:visibility="gone"
+        app:chipBackgroundColor="@color/surface"
+        app:chipStrokeColor="@color/primary"
+        app:chipStrokeWidth="1dp"
+        app:layout_constraintBottom_toTopOf="@id/imageCaptureButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="3 pages captured"
         tools:visibility="visible" />
 
     <!-- Loading overlay -->

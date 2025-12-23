@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import com.example.arlo.data.StarType
+import com.example.arlo.data.TextStyle
 import com.example.arlo.ui.WordHighlightState
 import com.example.arlo.ui.VoiceWaveView
 import android.view.LayoutInflater
@@ -79,6 +80,10 @@ class UnifiedReaderFragment : Fragment() {
     // Reading progress mode (page vs sentence)
     enum class ReadingProgressMode { PAGE, SENTENCE }
     private var currentProgressMode = ReadingProgressMode.PAGE
+
+    // Camera button animation for "need more pages" indication
+    private var cameraButtonAnimation: Animation? = null
+    private var isCameraAnimating = false
 
     // Permission launcher for RECORD_AUDIO
     private val requestAudioPermission = registerForActivityResult(
@@ -373,8 +378,8 @@ class UnifiedReaderFragment : Fragment() {
             // Use effective text which handles merging incomplete sentences across pages
             val displayText = state.getEffectiveDisplayText() ?: sentence.text
 
-            // Update sentence in animated view
-            binding.animatedSentenceView.setSentence(displayText)
+            // Update sentence in animated view with appropriate style
+            binding.animatedSentenceView.setSentence(displayText, textStyle = sentence.style)
 
             // Apply incomplete styling only when no continuation is available (text ends with ...)
             val showIncompleteStyle = displayText.endsWith("...")
@@ -427,7 +432,13 @@ class UnifiedReaderFragment : Fragment() {
                 }
             }
         } else if (!state.isLoading && state.pages.isNotEmpty()) {
-            binding.animatedSentenceView.setSentence("No text on this page")
+            // Show chapter title for title-only pages, or fallback message
+            val pageChapterTitle = state.currentPage?.chapterTitle
+            if (pageChapterTitle != null) {
+                binding.animatedSentenceView.setSentence(pageChapterTitle, isChapterTitle = true)
+            } else {
+                binding.animatedSentenceView.setSentence("No text on this page")
+            }
         }
 
         // Hide settings toggles in kid mode (locked to defaults)
@@ -438,16 +449,21 @@ class UnifiedReaderFragment : Fragment() {
         updateCollaborativeIndicator(state)
 
         // Navigation button states
+        // For empty pages (title-only), we can still navigate if there are more pages
         val canGoPrev = state.currentSentenceIndex > 0 || state.currentPageIndex > 0
         val canGoNext = !state.needsMorePages && (
             state.currentSentenceIndex < state.sentences.size - 1 ||
-            state.currentPageIndex < state.pages.size - 1
+            state.currentPageIndex < state.pages.size - 1 ||
+            (state.sentences.isEmpty() && state.currentPageIndex < state.pages.size - 1)
         )
         binding.btnPrevSentence.alpha = if (canGoPrev) 1f else 0.3f
         binding.btnNextSentence.alpha = if (canGoNext) 1f else 0.3f
 
         // Need more pages banner
         binding.needMorePagesBanner.visibility = if (state.needsMorePages) View.VISIBLE else View.GONE
+
+        // Camera button urgent indicator - pulse red when at end of book
+        updateCameraButtonUrgency(state.isAtEndOfBook || state.needsMorePages)
 
         // Play/pause button
         val playPauseIcon = if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
@@ -581,6 +597,41 @@ class UnifiedReaderFragment : Fragment() {
                 else -> R.drawable.bg_attempt_dot_inactive
             }
             dot.setBackgroundResource(bgRes)
+        }
+    }
+
+    /**
+     * Update camera button appearance to indicate urgency when user needs to capture more pages.
+     * Turns red and pulses when at the end of the book or when needsMorePages is true.
+     */
+    private fun updateCameraButtonUrgency(isUrgent: Boolean) {
+        if (isUrgent) {
+            // Tint the camera icon red
+            binding.btnAddPage.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(requireContext(), R.color.secondary)
+            )
+            binding.btnAddPage.tooltipText = "Capture more pages!"
+
+            // Start pulsing animation if not already animating
+            if (!isCameraAnimating) {
+                if (cameraButtonAnimation == null) {
+                    cameraButtonAnimation = AnimationUtils.loadAnimation(requireContext(), R.anim.camera_pulse_urgent)
+                }
+                binding.btnAddPage.startAnimation(cameraButtonAnimation)
+                isCameraAnimating = true
+            }
+        } else {
+            // Reset to normal teal tint
+            binding.btnAddPage.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(requireContext(), R.color.primary)
+            )
+            binding.btnAddPage.tooltipText = "Capture new page"
+
+            // Stop animation if running
+            if (isCameraAnimating) {
+                binding.btnAddPage.clearAnimation()
+                isCameraAnimating = false
+            }
         }
     }
 
@@ -780,6 +831,9 @@ class UnifiedReaderFragment : Fragment() {
         super.onDestroyView()
         viewModel.stopReading()
         viewModel.cancelSpeechRecognition()
+        // Clean up camera animation
+        cameraButtonAnimation = null
+        isCameraAnimating = false
         _binding = null
     }
 

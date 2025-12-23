@@ -20,7 +20,7 @@ class PageReviewAdapter : ListAdapter<Page, PageReviewAdapter.PageViewHolder>(Pa
     }
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), position, itemCount)
     }
 
     fun getPageAt(position: Int): Page? {
@@ -28,6 +28,7 @@ class PageReviewAdapter : ListAdapter<Page, PageReviewAdapter.PageViewHolder>(Pa
     }
 
     inner class PageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val tvPositionIndicator: TextView = itemView.findViewById(R.id.tvPositionIndicator)
         private val tvPageNumber: TextView = itemView.findViewById(R.id.tvPageNumber)
         private val ivConfidenceIcon: ImageView = itemView.findViewById(R.id.ivConfidenceIcon)
         private val tvConfidenceScore: TextView = itemView.findViewById(R.id.tvConfidenceScore)
@@ -36,7 +37,9 @@ class PageReviewAdapter : ListAdapter<Page, PageReviewAdapter.PageViewHolder>(Pa
         private val errorIndicator: View = itemView.findViewById(R.id.errorIndicator)
         private val tvErrorMessage: TextView = itemView.findViewById(R.id.tvErrorMessage)
 
-        fun bind(page: Page) {
+        fun bind(page: Page, position: Int, totalCount: Int) {
+            // Position indicator (1-indexed for user display)
+            tvPositionIndicator.text = "${position + 1}/$totalCount"
             // Page number display - show detected label, chapter title, or sequence number
             val pageDisplay = buildString {
                 page.chapterTitle?.let { append("$it • ") }

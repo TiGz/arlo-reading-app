@@ -9,6 +9,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import androidx.core.content.ContextCompat
 import com.example.arlo.R
+import com.example.arlo.data.TextStyle
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
@@ -50,18 +51,36 @@ class AnimatedSentenceView @JvmOverloads constructor(
         textColor = ContextCompat.getColor(context, R.color.reader_text_primary)
     }
 
+    // Track current display style (for change detection)
+    private var currentTextStyle: TextStyle = TextStyle.NORMAL
+
     /**
      * Set the sentence to display. Parses into words and creates WordViews.
      *
      * @param sentence The sentence text to display
      * @param animate Whether to animate the word creation (staggered fade-in)
+     * @param isChapterTitle Whether this is a chapter title (styled as bold heading) - legacy parameter
+     * @param textStyle The text style to apply (overrides isChapterTitle if not NORMAL)
      */
-    fun setSentence(sentence: String, animate: Boolean = false) {
-        // Skip if same sentence
-        if (sentence == currentSentence && wordViews.isNotEmpty()) return
+    fun setSentence(
+        sentence: String,
+        animate: Boolean = false,
+        isChapterTitle: Boolean = false,
+        textStyle: TextStyle = TextStyle.NORMAL
+    ) {
+        // Determine effective style - textStyle takes precedence, then isChapterTitle
+        val effectiveStyle = when {
+            textStyle != TextStyle.NORMAL -> textStyle
+            isChapterTitle -> TextStyle.HEADING
+            else -> TextStyle.NORMAL
+        }
+
+        // Skip if same sentence and style
+        if (sentence == currentSentence && wordViews.isNotEmpty() && effectiveStyle == currentTextStyle) return
 
         currentSentence = sentence
         highlightedWordIndex = -1
+        currentTextStyle = effectiveStyle
 
         // Clear existing views
         removeAllViews()
@@ -74,7 +93,7 @@ class AnimatedSentenceView @JvmOverloads constructor(
 
         // Create WordView for each word
         words.forEachIndexed { index, word ->
-            val wordView = createWordView(word)
+            val wordView = createWordView(word, effectiveStyle)
 
             if (animate) {
                 // Staggered fade-in animation
@@ -93,13 +112,36 @@ class AnimatedSentenceView @JvmOverloads constructor(
 
     /**
      * Create a styled WordView for a single word.
+     *
+     * @param word The word text to display
+     * @param style The text style to apply (affects size, weight, color)
      */
-    private fun createWordView(word: String): WordView {
+    private fun createWordView(word: String, style: TextStyle = TextStyle.NORMAL): WordView {
         return WordView(context).apply {
             text = word
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
-            setTextColor(textColor)
-            setTypeface(Typeface.SERIF)
+
+            // Style-specific sizing and typography
+            val (effectiveTextSize, typeface, effectiveColor) = when (style) {
+                TextStyle.HEADING -> Triple(
+                    textSizeSp * 1.3f,
+                    Typeface.BOLD,
+                    textColor
+                )
+                TextStyle.SCENE -> Triple(
+                    textSizeSp * 1.1f,
+                    Typeface.BOLD_ITALIC,
+                    ContextCompat.getColor(context, R.color.scene_text)  // Slightly muted color
+                )
+                TextStyle.NORMAL -> Triple(
+                    textSizeSp,
+                    Typeface.NORMAL,
+                    textColor
+                )
+            }
+
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, effectiveTextSize)
+            setTextColor(effectiveColor)
+            setTypeface(Typeface.SERIF, typeface)
             gravity = Gravity.CENTER
 
             // Layout params - horizontal spacing only to maintain sentence flow

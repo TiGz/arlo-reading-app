@@ -6,6 +6,18 @@
     android:layout_height="match_parent"
     android:background="@color/background">
 
+    <!-- Position indicator in top-right corner -->
+    <TextView
+        android:id="@+id/tvPositionIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:textSize="12sp"
+        android:textColor="@color/text_hint"
+        android:fontFamily="sans-serif"
+        tools:text="3/12" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -17,7 +29,7 @@
             android:orientation="vertical"
             android:padding="24dp">
 
-            <!-- Page number badge -->
+            <!-- OCR page number badge (central) -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
