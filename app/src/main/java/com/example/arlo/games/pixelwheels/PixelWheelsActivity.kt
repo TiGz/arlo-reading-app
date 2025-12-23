@@ -25,6 +25,7 @@ import android.view.View
 import android.view.WindowManager
 import com.badlogic.gdx.backends.android.AndroidApplication
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration
+import com.example.arlo.games.Difficulty
 import com.example.arlo.games.GameSession
 import com.example.arlo.games.RaceCreditsManager
 
@@ -44,6 +45,7 @@ class PixelWheelsActivity : AndroidApplication() {
     private var bestPosition: Int = Int.MAX_VALUE  // Track best finishing position
     private var sessionId: String = ""
     private var startedAt: Long = 0
+    private var difficulty: Difficulty = Difficulty.BEGINNER
 
     private lateinit var game: RaceLimitedPwGame
     private lateinit var raceCreditsManager: RaceCreditsManager
@@ -63,7 +65,15 @@ class PixelWheelsActivity : AndroidApplication() {
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: ""
         startedAt = System.currentTimeMillis()
 
-        android.util.Log.d("PixelWheelsActivity", "Read maxRaces from RaceCreditsManager: $maxRaces")
+        // Read difficulty from intent (defaults to BEGINNER)
+        val difficultyStr = intent.getStringExtra(EXTRA_DIFFICULTY) ?: "BEGINNER"
+        difficulty = try {
+            Difficulty.valueOf(difficultyStr)
+        } catch (e: IllegalArgumentException) {
+            Difficulty.BEGINNER
+        }
+
+        android.util.Log.d("PixelWheelsActivity", "Read maxRaces from RaceCreditsManager: $maxRaces, difficulty: $difficulty")
 
         // Restore state if process was killed (e.g., system reclaimed memory)
         savedInstanceState?.let { bundle ->
@@ -88,6 +98,7 @@ class PixelWheelsActivity : AndroidApplication() {
         // Create our race-limited game variant
         game = RaceLimitedPwGame(
             maxRaces = maxRaces,
+            difficulty = difficulty,
             onRaceComplete = { position -> handleRaceComplete(position) },
             onAllRacesComplete = { finishWithResult() },
             onGameExit = { finishWithResult() }
@@ -164,6 +175,7 @@ class PixelWheelsActivity : AndroidApplication() {
     companion object {
         const val EXTRA_MAX_RACES = "max_races"
         const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_DIFFICULTY = "difficulty"
         const val RESULT_RACES_COMPLETED = "races_completed"
         const val RESULT_BEST_POSITION = "best_position"
         const val RESULT_SESSION_ID = "session_id"
@@ -179,6 +191,7 @@ class PixelWheelsActivity : AndroidApplication() {
             return Intent(context, PixelWheelsActivity::class.java).apply {
                 putExtra(EXTRA_MAX_RACES, session.maxRaces)
                 putExtra(EXTRA_SESSION_ID, session.sessionId)
+                putExtra(EXTRA_DIFFICULTY, session.difficulty.name)
             }
         }
     }

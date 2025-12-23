@@ -29,12 +29,18 @@ public class GamePlay {
 
     // These are represented as plain int instead of a HashMap because Introspector does not support
     // HashMaps.
+    public int beginnerMaxDrivingForce = 20;  // 2/3 of EASY - for young children
+    public int trainingMaxDrivingForce = 25;  // 5/6 of EASY - stepping stone
     public int easyMaxDrivingForce = 30;
     public int mediumMaxDrivingForce = 40;
     public int hardMaxDrivingForce = 50;
 
     public int getMaxDrivingForce(Difficulty difficulty) {
         switch (difficulty) {
+            case BEGINNER:
+                return beginnerMaxDrivingForce;
+            case TRAINING:
+                return trainingMaxDrivingForce;
             case EASY:
                 return easyMaxDrivingForce;
             case MEDIUM:
@@ -69,8 +75,23 @@ public class GamePlay {
     public float turboDuration = 1f;
 
     // When an AI is better ranked than a player, set its max speed to this percent of the best max
-    // speed
+    // speed. This is the default value used when difficulty is not specified.
     public float aiSpeedLimiter = 0.8f;
+
+    /**
+     * Get the AI speed limiter based on difficulty.
+     * Lower values make it easier for the player to catch up when behind.
+     */
+    public float getAiSpeedLimiter(Difficulty difficulty) {
+        switch (difficulty) {
+            case BEGINNER:
+                return 0.65f;  // 65% speed when ahead - easiest to catch up
+            case TRAINING:
+                return 0.75f;  // 75% speed when ahead
+            default:
+                return aiSpeedLimiter;  // 80% speed (original behavior)
+        }
+    }
 
     public boolean oneLapOnly = false;
     public boolean freeCamera = false;

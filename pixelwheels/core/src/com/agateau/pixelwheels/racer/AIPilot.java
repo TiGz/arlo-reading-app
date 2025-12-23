@@ -202,6 +202,7 @@ public class AIPilot implements Pilot {
         vehicle.setBraking(false);
 
         // If we are better ranked than a player, slow down a bit
+        // The amount of slowdown depends on the difficulty level
         boolean needLimit = false;
         for (Racer playerRacer : mGameWorld.getPlayerRacers()) {
             if (Racer.compareRaceDistances(mRacer, playerRacer) > 0) {
@@ -209,7 +210,7 @@ public class AIPilot implements Pilot {
                 break;
             }
         }
-        float limit = needLimit ? GamePlay.instance.aiSpeedLimiter : 1f;
+        float limit = needLimit ? GamePlay.instance.getAiSpeedLimiter(mGameWorld.getDifficulty()) : 1f;
         vehicle.setSpeedLimiter(limit);
     }
 

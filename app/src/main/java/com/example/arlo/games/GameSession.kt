@@ -7,11 +7,11 @@ package com.example.arlo.games
 data class GameSession(
     val sessionId: String,
     val maxRaces: Int,
-    val difficulty: Difficulty = Difficulty.EASY,
+    val difficulty: Difficulty = Difficulty.BEGINNER,
     val earnedAt: Long = System.currentTimeMillis()
 ) {
     companion object {
-        fun create(maxRaces: Int, difficulty: Difficulty = Difficulty.EASY): GameSession {
+        fun create(maxRaces: Int, difficulty: Difficulty = Difficulty.BEGINNER): GameSession {
             return GameSession(
                 sessionId = java.util.UUID.randomUUID().toString(),
                 maxRaces = maxRaces,
@@ -22,6 +22,8 @@ data class GameSession(
 }
 
 enum class Difficulty {
+    BEGINNER,
+    TRAINING,
     EASY,
     MEDIUM,
     HARD

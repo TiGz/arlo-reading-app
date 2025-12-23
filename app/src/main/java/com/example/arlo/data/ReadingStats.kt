@@ -323,6 +323,7 @@ data class ParentSettings(
     // Game reward settings
     val gameRewardsEnabled: Boolean = true,   // Enable/disable game rewards
     val maxRacesPerDay: Int = 10,             // 1-20 races per day (default 10)
+    val gameDifficulty: String = "BEGINNER",  // BEGINNER, TRAINING, EASY, MEDIUM, HARD
 
     // Milestone rewards (0-5 races each)
     val racesForDailyTarget: Int = 1,         // Races when daily target hit

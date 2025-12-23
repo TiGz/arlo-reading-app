@@ -20,6 +20,8 @@ package com.example.arlo.games.pixelwheels
 
 import com.agateau.pixelwheels.PwGame
 import com.agateau.pixelwheels.RaceLimitedGame
+import com.agateau.pixelwheels.gamesetup.Difficulty as PwDifficulty
+import com.example.arlo.games.Difficulty as ArloDifficulty
 
 /**
  * Modified PwGame that:
@@ -32,6 +34,7 @@ import com.agateau.pixelwheels.RaceLimitedGame
  */
 class RaceLimitedPwGame(
     private val maxRaces: Int,
+    private val difficulty: ArloDifficulty = ArloDifficulty.BEGINNER,
     private val onRaceComplete: (position: Int) -> Unit,
     private val onAllRacesComplete: () -> Unit,
     private val onGameExit: () -> Unit
@@ -44,7 +47,19 @@ class RaceLimitedPwGame(
     override fun create() {
         android.util.Log.d("RaceLimitedPwGame", "create() called - calling super.create()")
         super.create()
-        android.util.Log.d("RaceLimitedPwGame", "super.create() complete - starting ArloQuickRace")
+        android.util.Log.d("RaceLimitedPwGame", "super.create() complete - applying difficulty: $difficulty")
+
+        // Apply difficulty to game config - maps Arlo difficulty to PixelWheels difficulty
+        val pwDifficulty = when (difficulty) {
+            ArloDifficulty.BEGINNER -> PwDifficulty.BEGINNER
+            ArloDifficulty.TRAINING -> PwDifficulty.TRAINING
+            ArloDifficulty.EASY -> PwDifficulty.EASY
+            ArloDifficulty.MEDIUM -> PwDifficulty.MEDIUM
+            ArloDifficulty.HARD -> PwDifficulty.HARD
+        }
+        config.difficulty = pwDifficulty
+        android.util.Log.d("RaceLimitedPwGame", "Set config.difficulty to: ${config.difficulty}")
+
         // Override: Skip main menu, start quick race immediately
         startArloQuickRace()
         isInitialized = true

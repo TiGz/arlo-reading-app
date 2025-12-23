@@ -20,6 +20,7 @@ package com.agateau.pixelwheels;
 
 import com.agateau.pixelwheels.bonus.BonusPool;
 import com.agateau.pixelwheels.gameobject.GameObject;
+import com.agateau.pixelwheels.gamesetup.Difficulty;
 import com.agateau.pixelwheels.map.Track;
 import com.agateau.pixelwheels.racer.Racer;
 import com.agateau.pixelwheels.racescreen.CountDown;
@@ -71,4 +72,7 @@ public interface GameWorld {
     void startRace();
 
     void setState(State state);
+
+    /** Get the current game difficulty */
+    Difficulty getDifficulty();
 }

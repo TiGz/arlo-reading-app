@@ -175,6 +175,11 @@ public class GameWorldImpl implements ContactListener, Disposable, GameWorld {
         return mGame.getGameStats();
     }
 
+    @Override
+    public com.agateau.pixelwheels.gamesetup.Difficulty getDifficulty() {
+        return mGame.getConfig().difficulty;
+    }
+
     /**
      * Sort racers, listing racers which have driven the longest first, so it returns 1 if racer1
      * has driven less than racer2

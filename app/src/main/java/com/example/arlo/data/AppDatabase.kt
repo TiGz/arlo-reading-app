@@ -28,7 +28,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MilestoneClaimRecord::class,
         SentenceCompletionState::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(SentenceListConverter::class)
@@ -414,6 +414,9 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_sentence_completion_state_book_page ON sentence_completion_state(bookId, pageId)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_sentence_completion_state_book_chapter ON sentence_completion_state(bookId, resolvedChapter)")
 
+                // ============ Update maxRacesPerDay default from 3 to 10 ============
+                db.execSQL("UPDATE parent_settings SET maxRacesPerDay = 10 WHERE maxRacesPerDay = 3")
+
                 // ============ Backfill resolvedChapter for existing pages ============
                 // Step 1: Set resolvedChapter = chapterTitle where chapterTitle exists
                 db.execSQL("UPDATE pages SET resolvedChapter = chapterTitle WHERE chapterTitle IS NOT NULL")
@@ -422,43 +425,51 @@ abstract class AppDatabase : RoomDatabase() {
                 backfillResolvedChapters(db)
             }
 
-            private fun backfillResolvedChapters(db: SupportSQLiteDatabase) {
-                // Get all books
-                val booksCursor = db.query("SELECT DISTINCT bookId FROM pages")
-                val bookIds = mutableListOf<Long>()
-                while (booksCursor.moveToNext()) {
-                    bookIds.add(booksCursor.getLong(0))
-                }
-                booksCursor.close()
+        }
 
-                for (bookId in bookIds) {
-                    // Get pages in order for this book
-                    val pagesCursor = db.query(
-                        "SELECT id, pageNumber, chapterTitle, resolvedChapter FROM pages WHERE bookId = ? ORDER BY pageNumber ASC",
-                        arrayOf(bookId.toString())
-                    )
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add gameDifficulty column to parent_settings (BEGINNER is default for young children)
+                db.execSQL("ALTER TABLE parent_settings ADD COLUMN gameDifficulty TEXT NOT NULL DEFAULT 'BEGINNER'")
+            }
+        }
 
-                    var lastKnownChapter: String? = null
-                    while (pagesCursor.moveToNext()) {
-                        val pageId = pagesCursor.getLong(0)
-                        val chapterTitle = if (pagesCursor.isNull(2)) null else pagesCursor.getString(2)
-                        val resolvedChapter = if (pagesCursor.isNull(3)) null else pagesCursor.getString(3)
+        private fun backfillResolvedChapters(db: SupportSQLiteDatabase) {
+            // Get all books
+            val booksCursor = db.query("SELECT DISTINCT bookId FROM pages")
+            val bookIds = mutableListOf<Long>()
+            while (booksCursor.moveToNext()) {
+                bookIds.add(booksCursor.getLong(0))
+            }
+            booksCursor.close()
 
-                        // If this page has a chapter title, update lastKnownChapter
-                        if (chapterTitle != null) {
-                            lastKnownChapter = chapterTitle
-                        }
+            for (bookId in bookIds) {
+                // Get pages in order for this book
+                val pagesCursor = db.query(
+                    "SELECT id, pageNumber, chapterTitle, resolvedChapter FROM pages WHERE bookId = ? ORDER BY pageNumber ASC",
+                    arrayOf(bookId.toString())
+                )
 
-                        // If resolvedChapter is null but we have a lastKnownChapter, backfill
-                        if (resolvedChapter == null && lastKnownChapter != null) {
-                            db.execSQL(
-                                "UPDATE pages SET resolvedChapter = ? WHERE id = ?",
-                                arrayOf(lastKnownChapter, pageId)
-                            )
-                        }
+                var lastKnownChapter: String? = null
+                while (pagesCursor.moveToNext()) {
+                    val pageId = pagesCursor.getLong(0)
+                    val chapterTitle = if (pagesCursor.isNull(2)) null else pagesCursor.getString(2)
+                    val resolvedChapter = if (pagesCursor.isNull(3)) null else pagesCursor.getString(3)
+
+                    // If this page has a chapter title, update lastKnownChapter
+                    if (chapterTitle != null) {
+                        lastKnownChapter = chapterTitle
                     }
-                    pagesCursor.close()
+
+                    // If resolvedChapter is null but we have a lastKnownChapter, backfill
+                    if (resolvedChapter == null && lastKnownChapter != null) {
+                        db.execSQL(
+                            "UPDATE pages SET resolvedChapter = ? WHERE id = ?",
+                            arrayOf(lastKnownChapter, pageId)
+                        )
+                    }
                 }
+                pagesCursor.close()
             }
         }
 
@@ -473,7 +484,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                     MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                     MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-                    MIGRATION_13_14
+                    MIGRATION_13_14, MIGRATION_14_15
                 )
                 .fallbackToDestructiveMigration()
                 .build()

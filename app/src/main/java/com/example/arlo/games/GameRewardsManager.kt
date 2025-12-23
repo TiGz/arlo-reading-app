@@ -95,7 +95,14 @@ class GameRewardsManager(
         // Update stats to mark reward as claimed
         statsRepository.claimGameReward(racesEarned)
 
-        return GameSession.create(maxRaces = racesEarned)
+        // Convert difficulty string from ParentSettings to Difficulty enum
+        val difficulty = try {
+            Difficulty.valueOf(parentSettings.gameDifficulty)
+        } catch (e: IllegalArgumentException) {
+            Difficulty.BEGINNER  // Default to BEGINNER if invalid
+        }
+
+        return GameSession.create(maxRaces = racesEarned, difficulty = difficulty)
     }
 
     /**

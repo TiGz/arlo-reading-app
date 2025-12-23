@@ -53,6 +53,7 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
     private var isInitialVoiceSelection: Boolean = true
     private var selectedMaxSyllables: Int = 0  // 0 = Any (no limit)
     private var isMilestoneExpanded: Boolean = false
+    private var selectedGameDifficulty: String = "BEGINNER"  // BEGINNER, TRAINING, EASY, MEDIUM
 
     // Milestone slider bindings
     private lateinit var dailyGoalRacesBinding: ItemMilestoneSliderBinding
@@ -188,6 +189,10 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 binding.sliderMaxRaces.value = settings.maxRacesPerDay.toFloat()
                 binding.tvMaxRacesValue.text = settings.maxRacesPerDay.toString()
                 updateMaxRacesVisibility(settings.gameRewardsEnabled)
+
+                // Load game difficulty setting
+                selectedGameDifficulty = settings.gameDifficulty
+                updateGameDifficultySelection(selectedGameDifficulty)
 
                 // Initialize milestone slider bindings
                 initMilestoneSliders(settings)
@@ -420,6 +425,19 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                 updateMaxRacesVisibility(isChecked)
             }
 
+            // Game difficulty toggle group
+            binding.toggleGameDifficulty.addOnButtonCheckedListener { _, checkedId, isChecked ->
+                if (isChecked) {
+                    selectedGameDifficulty = when (checkedId) {
+                        R.id.btnDifficultyBeginner -> "BEGINNER"
+                        R.id.btnDifficultyTraining -> "TRAINING"
+                        R.id.btnDifficultyCasual -> "EASY"
+                        R.id.btnDifficultyPro -> "MEDIUM"
+                        else -> "BEGINNER"
+                    }
+                }
+            }
+
             // Max races slider
             binding.sliderMaxRaces.addOnChangeListener { _, value, _ ->
                 binding.tvMaxRacesValue.text = value.toInt().toString()
@@ -483,6 +501,20 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
             else -> R.id.btnSyllablesAny  // 0 or any other = "Any"
         }
         binding.toggleMaxSyllables.check(buttonId)
+    }
+
+    /**
+     * Update the game difficulty toggle group selection.
+     */
+    private fun updateGameDifficultySelection(difficulty: String) {
+        val buttonId = when (difficulty) {
+            "BEGINNER" -> R.id.btnDifficultyBeginner
+            "TRAINING" -> R.id.btnDifficultyTraining
+            "EASY" -> R.id.btnDifficultyCasual
+            "MEDIUM" -> R.id.btnDifficultyPro
+            else -> R.id.btnDifficultyBeginner  // Default to Beginner
+        }
+        binding.toggleGameDifficulty.check(buttonId)
     }
 
     /**
@@ -597,6 +629,7 @@ class ParentSettingsDialogFragment : BottomSheetDialogFragment() {
                     kidModeEnabled = ttsPreferences.getKidMode(),  // Preserve existing kid mode setting
                     gameRewardsEnabled = binding.switchGameRewards.isChecked,
                     maxRacesPerDay = binding.sliderMaxRaces.value.toInt(),
+                    gameDifficulty = selectedGameDifficulty,
                     // Milestone settings
                     racesForDailyTarget = dailyGoalRacesBinding.sliderMilestone.value.toInt(),
                     racesPerMultiple = multipleRacesBinding.sliderMilestone.value.toInt(),

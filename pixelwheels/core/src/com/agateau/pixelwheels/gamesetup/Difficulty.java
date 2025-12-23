@@ -21,12 +21,18 @@ package com.agateau.pixelwheels.gamesetup;
 import static com.agateau.translations.Translator.tr;
 
 public enum Difficulty {
+    BEGINNER,  // Easiest - for young children
+    TRAINING,  // Intermediate step
     EASY,
     MEDIUM,
     HARD;
 
     public String toTranslatedString() {
         switch (this) {
+            case BEGINNER:
+                return tr("Beginner");
+            case TRAINING:
+                return tr("Training");
             case EASY:
                 return tr("Casual");
             case MEDIUM:
