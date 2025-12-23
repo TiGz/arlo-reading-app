@@ -446,7 +446,17 @@ PAGE LABEL (pageLabel):
 - Look in all corners, top, and bottom of the page
 
 CHAPTER TITLE (chapterTitle):
-- Extract chapter/section headings if present (e.g., "Prologue", "Chapter 1", "The Beginning")
+- Extract chapter/section headings if present
+- COMMON FORMATS (all should be captured):
+  * Just a number: "1", "2", "3" (very common in children's books!)
+  * Word + number: "Chapter 1", "Chapter One", "Part 2"
+  * Named: "Prologue", "Epilogue", "The Beginning", "Interlude"
+  * Mixed: "Chapter 1: The Journey Begins", "1. The First Day"
+- DETECTION HINTS: Chapter indicators are usually:
+  * Larger, bolder, or different font than body text
+  * Centered or prominently positioned
+  * Standalone (not part of a sentence)
+  * At the TOP of a page (first item after page number)
 - Use null if no chapter title is visible
 - Do NOT include book title or author name as chapter title
 - EXCLUDE from sentences but CAPTURE in this field
@@ -454,7 +464,8 @@ CHAPTER TITLE (chapterTitle):
 TITLE-ONLY PAGES:
 - Some pages contain ONLY a chapter title or section heading with no body text
 - For these pages: set chapterTitle to the title text, and sentences to EMPTY array []
-- Examples: "Prologue", "Part One", "Chapter 1: The Journey Begins", "Interlude"
+- Examples: "Prologue", "Part One", "Chapter 1: The Journey Begins", "1", "2", "Interlude"
+- A page with just a large "3" centered is a chapter title page - capture as chapterTitle: "3"
 - This allows navigation to flow naturally while preserving chapter metadata
 
 TEXT STYLE DETECTION (style field):

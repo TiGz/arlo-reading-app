@@ -37,6 +37,7 @@ interface BookPayload {
   local_id: number
   title: string
   total_pages: number
+  total_sentences: number
   pages_read: number
   current_page: number
   current_sentence: number
@@ -180,6 +181,7 @@ serve(async (req) => {
         local_book_id: b.local_id,
         title: b.title,
         total_pages: b.total_pages,
+        total_sentences: b.total_sentences,
         pages_read: b.pages_read,
         current_page: b.current_page,
         current_sentence: b.current_sentence,

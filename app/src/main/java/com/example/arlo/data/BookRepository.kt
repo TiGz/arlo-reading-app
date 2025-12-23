@@ -182,6 +182,17 @@ class BookRepository(private val bookDao: BookDao) {
     }
 
     /**
+     * Count total sentences across all completed pages in a book.
+     * Used for cloud sync to track reading progress.
+     */
+    suspend fun getTotalSentenceCount(bookId: Long): Int {
+        val pages = bookDao.getCompletedPagesForBookSync(bookId)
+        return pages.sumOf { page ->
+            parseSentences(page.sentencesJson).size
+        }
+    }
+
+    /**
      * Queue a page for OCR processing.
      */
     suspend fun queuePageForProcessing(

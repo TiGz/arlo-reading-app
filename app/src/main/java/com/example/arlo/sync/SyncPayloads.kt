@@ -45,6 +45,7 @@ data class BookPayload(
     @SerialName("local_id") val localId: Long,
     val title: String,
     @SerialName("total_pages") val totalPages: Int,
+    @SerialName("total_sentences") val totalSentences: Int,
     @SerialName("pages_read") val pagesRead: Int,
     @SerialName("current_page") val currentPage: Int,
     @SerialName("current_sentence") val currentSentence: Int,

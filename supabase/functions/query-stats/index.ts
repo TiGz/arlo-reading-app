@@ -63,7 +63,7 @@ serve(async (req) => {
       case 'books':
         const { data: books } = await supabase
           .from('books')
-          .select('title, total_pages, pages_read, current_page, completed_at, total_stars_earned')
+          .select('title, total_pages, total_sentences, pages_read, current_page, completed_at, total_stars_earned')
           .eq('device_id', device.id)
           .order('synced_at', { ascending: false })
         result = { data: books }

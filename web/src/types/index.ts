@@ -54,6 +54,7 @@ export interface LifetimeStats {
 export interface Book {
   title: string;
   total_pages: number;
+  total_sentences: number;
   pages_read: number;
   current_page: number;
   completed_at: string | null;

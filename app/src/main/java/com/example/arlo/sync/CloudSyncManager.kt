@@ -178,11 +178,13 @@ class CloudSyncManager(
         val books = bookRepository.getAllBooksSync()
         return books.map { book ->
             val pageCount = bookRepository.getPageCount(book.id)
+            val sentenceCount = bookRepository.getTotalSentenceCount(book.id)
             val stats = statsRepository.getOrCreateBookStats(book.id)
             BookPayload(
                 localId = book.id,
                 title = book.title,
                 totalPages = pageCount,
+                totalSentences = sentenceCount,
                 pagesRead = book.lastReadPageNumber,
                 currentPage = book.lastReadPageNumber,
                 currentSentence = book.lastReadSentenceIndex,
