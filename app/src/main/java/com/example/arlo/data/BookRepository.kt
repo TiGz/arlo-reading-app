@@ -22,7 +22,8 @@ class BookRepository(private val bookDao: BookDao) {
 
     /**
      * Add a page with sentence data from Claude OCR.
-     * Handles sentence continuation from previous page.
+     * Stores sentences exactly as OCR returned them - no storage-time merging.
+     * Incomplete sentences are merged at read-time in UnifiedReaderViewModel.
      */
     suspend fun addPageWithSentences(
         bookId: Long,
@@ -30,49 +31,18 @@ class BookRepository(private val bookDao: BookDao) {
         pageNumber: Int,
         sentences: List<SentenceData>
     ): Long {
-        val sentencesToStore = sentences.toMutableList()
-
-        // Handle continuation from previous page
-        if (pageNumber > 1) {
-            val prevPage = bookDao.getPageByNumber(bookId, pageNumber - 1)
-            if (prevPage != null && !prevPage.lastSentenceComplete) {
-                val prevSentences = parseSentences(prevPage.sentencesJson)
-                if (prevSentences.isNotEmpty() && sentencesToStore.isNotEmpty()) {
-                    val lastPrev = prevSentences.last()
-                    val firstNew = sentencesToStore.first()
-
-                    // Merge: append first new sentence to last previous
-                    val mergedText = "${lastPrev.text} ${firstNew.text}".trim()
-                    val mergedComplete = firstNew.isComplete
-
-                    // Update previous page's sentences
-                    val updatedPrevSentences = prevSentences.dropLast(1) +
-                        SentenceData(mergedText, mergedComplete)
-
-                    bookDao.updatePageSentences(
-                        prevPage.id,
-                        toJson(updatedPrevSentences),
-                        mergedComplete
-                    )
-
-                    // Remove merged sentence from new page
-                    sentencesToStore.removeAt(0)
-                }
-            }
-        }
-
         // Determine if this page's last sentence is complete
-        val lastComplete = sentencesToStore.lastOrNull()?.isComplete ?: true
+        val lastComplete = sentences.lastOrNull()?.isComplete ?: true
 
         // Build full text from sentences
-        val fullText = sentencesToStore.joinToString(" ") { it.text }
+        val fullText = sentences.joinToString(" ") { it.text }
 
         val page = Page(
             bookId = bookId,
             imagePath = imagePath,
             pageNumber = pageNumber,
             text = fullText,
-            sentencesJson = toJson(sentencesToStore),
+            sentencesJson = toJson(sentences),
             lastSentenceComplete = lastComplete
         )
         return bookDao.insertPage(page)

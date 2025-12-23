@@ -146,6 +146,48 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val isLastSentenceIncomplete: Boolean get() =
             currentSentenceIndex == sentences.lastIndex &&
             currentSentence?.isComplete == false
+
+        /**
+         * Get the effective text for display, merging with next sentence if current is incomplete.
+         * This handles cross-page sentence continuation at read-time.
+         */
+        fun getEffectiveDisplayText(): String? {
+            val sentence = currentSentence ?: return null
+            if (sentence.isComplete) {
+                return sentence.text
+            }
+
+            // Sentence is incomplete - try to merge with next sentence
+            val nextSentenceIndex = currentSentenceIndex + 1
+            val nextSentence = if (nextSentenceIndex < sentences.size) {
+                sentences[nextSentenceIndex]
+            } else {
+                // Look at next page's first sentence
+                val nextPageIndex = currentPageIndex + 1
+                if (nextPageIndex < pages.size) {
+                    // Parse next page's sentences - this is a bit expensive but only for incomplete sentences
+                    val nextPage = pages[nextPageIndex]
+                    val nextPageSentencesJson = nextPage.sentencesJson
+                    if (nextPageSentencesJson != null) {
+                        try {
+                            val gson = com.google.gson.Gson()
+                            val type = object : com.google.gson.reflect.TypeToken<List<SentenceData>>() {}.type
+                            val nextPageSentences: List<SentenceData> = gson.fromJson(nextPageSentencesJson, type)
+                            nextPageSentences.firstOrNull()
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+                } else null
+            }
+
+            return if (nextSentence != null) {
+                "${sentence.text} ${nextSentence.text}".trim()
+            } else {
+                // No continuation available yet, show with ellipsis to indicate incomplete
+                "${sentence.text}..."
+            }
+        }
     }
 
     private val _state = MutableStateFlow(ReaderState())
@@ -386,7 +428,15 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
         val current = _state.value
         if (current.sentences.isEmpty()) return
 
-        val nextIndex = current.currentSentenceIndex + 1
+        // Calculate how many sentences to skip (1 normally, 2 if we merged with the next sentence)
+        val skipCount = if (skipNextSentenceForMerge) {
+            skipNextSentenceForMerge = false  // Reset the flag
+            Log.d(TAG, "Skipping extra sentence due to merge")
+            2
+        } else {
+            1
+        }
+        val nextIndex = current.currentSentenceIndex + skipCount
 
         // Record that we completed the current sentence (for stats)
         trackSentenceRead()
@@ -403,6 +453,35 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 collaborativeState = CollaborativeState.IDLE  // Reset collaborative state on navigation
             )
             saveReadingPosition()
+        } else if (skipCount == 2 && nextIndex == current.sentences.size) {
+            // We skipped to exactly the end of the page - move to next page, sentence 1 (index 1)
+            // because sentence 0 was already merged and read
+            val nextPageIndex = current.currentPageIndex + 1
+            if (nextPageIndex < current.pages.size) {
+                trackPageCompleted()
+                val nextPage = current.pages[nextPageIndex]
+                val nextSentences = parseSentencesForPage(nextPage)
+                // Start at index 1 since index 0 was already read as part of the merge
+                val startIndex = if (nextSentences.size > 1) 1 else 0
+                _state.value = current.copy(
+                    currentPageIndex = nextPageIndex,
+                    currentSentenceIndex = startIndex,
+                    sentences = nextSentences,
+                    needsMorePages = false,
+                    highlightRange = null,
+                    targetWord = null,
+                    ttsHasPronouncedTargetWord = false,
+                    attemptCount = 0,
+                    lastAttemptSuccess = null,
+                    collaborativeState = CollaborativeState.IDLE,
+                    chapterTitle = nextPage.resolvedChapter
+                )
+                saveReadingPosition()
+            } else {
+                trackPageCompleted()
+                _state.value = current.copy(needsMorePages = true, isPlaying = false)
+                ttsService.stop()
+            }
         } else {
             // Try to move to next page
             val nextPageIndex = current.currentPageIndex + 1
@@ -545,13 +624,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     private fun speakCurrentSentence() {
         val sentence = _state.value.currentSentence ?: return
 
-        // Don't read incomplete sentences (they're cut off mid-thought)
-        if (!sentence.isComplete && _state.value.currentSentenceIndex == _state.value.sentences.lastIndex) {
-            if (_state.value.isPlaying && _state.value.autoAdvance) {
-                nextSentence()
-            }
-            return
-        }
+        // Get effective text (merges with next sentence if incomplete)
+        val (effectiveText, shouldSkipNext) = getEffectiveSentenceText(sentence)
+        skipNextSentenceForMerge = shouldSkipNext
 
         if (ttsService.isReady()) {
             // Trigger lookahead caching for upcoming sentences
@@ -564,9 +639,9 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
             viewModelScope.launch {
                 // Check if audio is cached - if not, show loading indicator
-                val isCached = ttsCacheManager.isCached(sentence.text)
-                val isInFlight = ttsCacheManager.isInFlight(sentence.text)
-                Log.d("AudioLoading", "speakCurrentSentence: isCached=$isCached, isInFlight=$isInFlight, sentence='${sentence.text.take(40)}...'")
+                val isCached = ttsCacheManager.isCached(effectiveText)
+                val isInFlight = ttsCacheManager.isInFlight(effectiveText)
+                Log.d("AudioLoading", "speakCurrentSentence: isCached=$isCached, isInFlight=$isInFlight, sentence='${effectiveText.take(40)}...'")
 
                 if (!isCached) {
                     Log.d("AudioLoading", "Setting isLoadingAudio=true (not cached)")
@@ -577,7 +652,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
                     // Wait for synthesis to complete before playing
                     // This ensures the loading indicator shows for the full network request time
-                    val result = ttsCacheManager.getOrSynthesize(sentence.text)
+                    val result = ttsCacheManager.getOrSynthesize(effectiveText)
                     Log.d("AudioLoading", "Synthesis complete, setting isLoadingAudio=false")
                     _state.value = _state.value.copy(isLoadingAudio = false)
 
@@ -589,7 +664,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 }
 
                 // Now play the audio (will use cache if available)
-                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
+                ttsService.speakWithKokoro(effectiveText, ttsCacheManager) {
                     // Callback when TTS finishes
                     if (_state.value.isPlaying) {
                         if (_state.value.autoAdvance) {
@@ -617,6 +692,10 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
     private fun speakCurrentSentenceAndAutoAdvance() {
         val sentence = _state.value.currentSentence ?: return
 
+        // Get effective text (merges with next sentence if incomplete)
+        val (effectiveText, shouldSkipNext) = getEffectiveSentenceText(sentence)
+        skipNextSentenceForMerge = shouldSkipNext
+
         _state.value = _state.value.copy(isPlaying = true)
 
         if (ttsService.isReady()) {
@@ -630,7 +709,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
             viewModelScope.launch {
                 // Check if audio is cached - if not, show loading indicator
-                val isCached = ttsCacheManager.isCached(sentence.text)
+                val isCached = ttsCacheManager.isCached(effectiveText)
                 Log.d("AudioLoading", "speakCurrentSentenceAndAutoAdvance: isCached=$isCached")
 
                 if (!isCached) {
@@ -638,7 +717,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                     _state.value = _state.value.copy(isLoadingAudio = true)
 
                     // Wait for synthesis to complete before playing
-                    val result = ttsCacheManager.getOrSynthesize(sentence.text)
+                    val result = ttsCacheManager.getOrSynthesize(effectiveText)
                     Log.d("AudioLoading", "Short sentence synthesis complete, setting isLoadingAudio=false")
                     _state.value = _state.value.copy(isLoadingAudio = false)
 
@@ -648,7 +727,7 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
                 }
 
                 // Now play the audio (will use cache if available)
-                ttsService.speakWithKokoro(sentence.text, ttsCacheManager) {
+                ttsService.speakWithKokoro(effectiveText, ttsCacheManager) {
                     // Always auto-advance after short sentences in collaborative mode
                     if (_state.value.isPlaying) {
                         nextSentence()
@@ -740,6 +819,58 @@ class UnifiedReaderViewModel(application: Application) : AndroidViewModel(applic
 
         return emptyList()
     }
+
+    /**
+     * Get the effective sentence text for TTS, merging with the next sentence if current is incomplete.
+     * This handles sentences that span page boundaries - the fragment on page N is merged with
+     * the continuation on page N+1 at read-time.
+     *
+     * @return Pair of (effectiveText, shouldSkipNextSentence)
+     */
+    private fun getEffectiveSentenceText(sentence: SentenceData): Pair<String, Boolean> {
+        if (sentence.isComplete) {
+            return Pair(sentence.text, false)
+        }
+
+        // Sentence is incomplete - find and merge with the next sentence
+        val continuation = getNextSentenceForMerge()
+        return if (continuation != null) {
+            val mergedText = "${sentence.text} ${continuation.text}".trim()
+            Log.d(TAG, "Merged incomplete sentence: '${sentence.text}' + '${continuation.text}' = '$mergedText'")
+            Pair(mergedText, true)  // Skip next sentence since we merged it
+        } else {
+            // No continuation available yet (next page not captured), read incomplete sentence as-is
+            Log.d(TAG, "Incomplete sentence with no continuation: '${sentence.text}'")
+            Pair(sentence.text, false)
+        }
+    }
+
+    /**
+     * Get the next sentence for merging, looking across page boundaries if needed.
+     * Returns the first sentence of the next page if we're at the last sentence of current page.
+     */
+    private fun getNextSentenceForMerge(): SentenceData? {
+        val current = _state.value
+        val nextSentenceIndex = current.currentSentenceIndex + 1
+
+        // Check if there's a next sentence on the current page
+        if (nextSentenceIndex < current.sentences.size) {
+            return current.sentences[nextSentenceIndex]
+        }
+
+        // Look at the next page
+        val nextPageIndex = current.currentPageIndex + 1
+        if (nextPageIndex < current.pages.size) {
+            val nextPage = current.pages[nextPageIndex]
+            val nextPageSentences = parseSentencesForPage(nextPage)
+            return nextPageSentences.firstOrNull()
+        }
+
+        return null
+    }
+
+    // Track whether we need to skip the next sentence due to merge
+    private var skipNextSentenceForMerge = false
 
     /**
      * Refresh pages (e.g., after background processing completes).

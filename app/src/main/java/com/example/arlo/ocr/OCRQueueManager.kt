@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -68,8 +69,28 @@ class OCRQueueManager(
     }
 
     init {
+        // Reset any pages stuck in PROCESSING state from previous sessions
+        // (e.g., if app was killed during OCR)
+        scope.launch {
+            resetStuckProcessingPages()
+        }
         // Start processing any pending pages from previous sessions
         startProcessingIfNeeded()
+    }
+
+    /**
+     * Reset any pages stuck in PROCESSING state back to PENDING.
+     * This handles cases where the app was killed during OCR processing.
+     */
+    private suspend fun resetStuckProcessingPages() {
+        val stuckPages = bookDao.getProcessingPages().first().filter { it.processingStatus == "PROCESSING" }
+        if (stuckPages.isNotEmpty()) {
+            Log.w(TAG, "Found ${stuckPages.size} pages stuck in PROCESSING state, resetting to PENDING")
+            stuckPages.forEach { page ->
+                Log.d(TAG, "Resetting stuck page ${page.id} (book ${page.bookId}, page ${page.pageNumber}) to PENDING")
+                bookDao.updateProcessingStatus(page.id, "PENDING")
+            }
+        }
     }
 
     /**
@@ -102,13 +123,20 @@ class OCRQueueManager(
     }
 
     private suspend fun processQueue() {
-        if (isProcessing) return
+        if (isProcessing) {
+            Log.d(TAG, "processQueue: Already processing, skipping")
+            return
+        }
         isProcessing = true
+        Log.d(TAG, "processQueue: Started processing loop")
 
         try {
             while (true) {
                 val nextPage = bookDao.getNextPendingPage()
+                Log.d(TAG, "processQueue: getNextPendingPage returned ${nextPage?.let { "page ${it.id} (status=${it.processingStatus}, imagePath=${it.imagePath})" } ?: "null"}")
+
                 if (nextPage == null) {
+                    Log.d(TAG, "processQueue: No pending pages, going idle")
                     _queueState.value = QueueState.Idle
                     break
                 }
@@ -117,6 +145,7 @@ class OCRQueueManager(
             }
         } finally {
             isProcessing = false
+            Log.d(TAG, "processQueue: Finished, isProcessing=false")
         }
     }
 
@@ -198,44 +227,9 @@ class OCRQueueManager(
     }
 
     private suspend fun processFirstPageResult(page: Page, pageResult: ClaudeOCRService.PageOCRResult) {
-        // Work with mutable list for potential merging
-        val sentences = pageResult.sentences.toMutableList()
-
-        // Handle sentence continuation from previous page
-        if (page.pageNumber > 1 && sentences.isNotEmpty()) {
-            val prevPage = bookDao.getPageByNumber(page.bookId, page.pageNumber - 1)
-            if (prevPage != null &&
-                prevPage.processingStatus == "COMPLETED" &&
-                !prevPage.lastSentenceComplete) {
-
-                val prevSentences = parseSentences(prevPage.sentencesJson)
-                if (prevSentences.isNotEmpty()) {
-                    val lastPrev = prevSentences.last()
-                    val firstNew = sentences.first()
-
-                    // Merge: prepend previous fragment to first new sentence
-                    Log.d(TAG, "Merging sentences: '${lastPrev.text}' + '${firstNew.text}'")
-                    sentences[0] = SentenceData(
-                        text = "${lastPrev.text} ${firstNew.text}".trim(),
-                        isComplete = firstNew.isComplete
-                    )
-
-                    // Remove fragment from previous page
-                    val updatedPrevSentences = prevSentences.dropLast(1)
-                    val prevFullText = updatedPrevSentences.joinToString(" ") { it.text }
-                    val prevLastComplete = updatedPrevSentences.lastOrNull()?.isComplete ?: true
-
-                    bookDao.updatePageFull(
-                        prevPage.id,
-                        prevFullText,
-                        prevPage.imagePath,
-                        toJson(updatedPrevSentences),
-                        prevLastComplete
-                    )
-                    Log.d(TAG, "Updated previous page ${prevPage.id}, removed fragment")
-                }
-            }
-        }
+        // Store sentences exactly as OCR returned them (no storage-time merging)
+        // Incomplete sentences will be merged at read-time in UnifiedReaderViewModel
+        val sentences = pageResult.sentences
 
         // Build final JSON and text
         val sentencesJson = toJson(sentences)
@@ -458,6 +452,8 @@ class OCRQueueManager(
 
     /**
      * Prepare a page for recapture by resetting its processing state.
+     * Each page stores its own OCR data independently - no cross-page cleanup needed.
+     * Sentence merging happens at read-time in UnifiedReaderViewModel.
      */
     suspend fun prepareForRecapture(pageId: Long) {
         bookDao.resetPageForRecapture(pageId)
@@ -466,19 +462,39 @@ class OCRQueueManager(
 
     /**
      * Queue a recapture of an existing page with a new image.
+     * Note: prepareForRecapture should have been called first to reset page status.
      */
     suspend fun queueRecapture(pageId: Long, newImagePath: String) {
+        Log.d(TAG, "=== RECAPTURE START === pageId=$pageId, newImagePath=$newImagePath")
+
         val oldPage = bookDao.getPageById(pageId)
-        if (oldPage != null && oldPage.imagePath.isNotEmpty()) {
-            // Delete old image file
-            File(oldPage.imagePath).delete()
-            Log.d(TAG, "Deleted old image for page $pageId")
+        if (oldPage == null) {
+            Log.e(TAG, "RECAPTURE ERROR: Page $pageId not found in database!")
+            return
+        }
+
+        Log.d(TAG, "RECAPTURE: Found page $pageId, current status=${oldPage.processingStatus}, imagePath=${oldPage.imagePath}")
+
+        if (oldPage.imagePath.isNotEmpty()) {
+            val deleted = File(oldPage.imagePath).delete()
+            Log.d(TAG, "RECAPTURE: Deleted old image for page $pageId, success=$deleted")
+        }
+
+        // Ensure page is in PENDING status (may not be if prepareForRecapture wasn't called or failed)
+        if (oldPage.processingStatus != "PENDING") {
+            Log.w(TAG, "RECAPTURE: Page $pageId was not PENDING (was ${oldPage.processingStatus}), resetting status")
+            bookDao.resetPageForRecapture(pageId)
         }
 
         // Update page with new image path
         bookDao.updatePageImage(pageId, newImagePath)
-        Log.d(TAG, "Queued recapture for page $pageId with new image")
+        Log.d(TAG, "RECAPTURE: Updated image path for page $pageId")
 
+        // Verify the update
+        val verifyPage = bookDao.getPageById(pageId)
+        Log.d(TAG, "RECAPTURE VERIFY: pageId=$pageId, status=${verifyPage?.processingStatus}, imagePath=${verifyPage?.imagePath}")
+
+        Log.d(TAG, "=== RECAPTURE STARTING QUEUE === isProcessing=$isProcessing")
         startProcessingIfNeeded()
     }
 

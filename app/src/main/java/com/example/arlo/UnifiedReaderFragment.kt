@@ -370,17 +370,15 @@ class UnifiedReaderFragment : Fragment() {
         // Sentence display with animated word highlighting
         val sentence = state.currentSentence
         if (sentence != null) {
-            val displayText = if (state.isLastSentenceIncomplete) {
-                "${sentence.text}..."
-            } else {
-                sentence.text
-            }
+            // Use effective text which handles merging incomplete sentences across pages
+            val displayText = state.getEffectiveDisplayText() ?: sentence.text
 
             // Update sentence in animated view
             binding.animatedSentenceView.setSentence(displayText)
 
-            // Apply incomplete styling
-            binding.animatedSentenceView.setIncomplete(state.isLastSentenceIncomplete)
+            // Apply incomplete styling only when no continuation is available (text ends with ...)
+            val showIncompleteStyle = displayText.endsWith("...")
+            binding.animatedSentenceView.setIncomplete(showIncompleteStyle)
 
             // Handle word highlighting based on state
             when {

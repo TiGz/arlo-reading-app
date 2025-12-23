@@ -32,6 +32,8 @@ class PageReviewFragment : Fragment() {
     private lateinit var bottomBar: LinearLayout
 
     private var pages: List<Page> = emptyList()
+    private var pendingScrollPosition: Int = -1
+    private var hasRestoredPosition = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -102,6 +104,14 @@ class PageReviewFragment : Fragment() {
                         bottomBar.visibility = View.VISIBLE
                         viewPager.visibility = View.VISIBLE
 
+                        // Restore position after data loads (only once)
+                        if (!hasRestoredPosition && pendingScrollPosition >= 0 && pendingScrollPosition < pageList.size) {
+                            hasRestoredPosition = true
+                            viewPager.post {
+                                viewPager.setCurrentItem(pendingScrollPosition, false)
+                            }
+                        }
+
                         // Update displays for current position
                         val currentPos = viewPager.currentItem.coerceIn(0, pageList.size - 1)
                         updatePageIndicator(currentPos)
@@ -112,15 +122,8 @@ class PageReviewFragment : Fragment() {
             }
         }
 
-        // Restore position if coming back from recapture
-        val startPosition = arguments?.getInt(ARG_START_POSITION, 0) ?: 0
-        if (startPosition > 0) {
-            viewPager.post {
-                if (startPosition < adapter.itemCount) {
-                    viewPager.setCurrentItem(startPosition, false)
-                }
-            }
-        }
+        // Store position to restore after data loads
+        pendingScrollPosition = arguments?.getInt(ARG_START_POSITION, -1) ?: -1
     }
 
     private fun updatePageIndicator(position: Int) {
